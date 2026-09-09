@@ -30,7 +30,6 @@ from tree_utils import (
 
 
 APP_DIR = Path(__file__).resolve().parent
-DEFAULT_TREE = APP_DIR / "edge-incomplete-min_taxa_050.charsets.renamed_species_accession_geo_srr_gca_species_updated.tree"
 
 
 st.set_page_config(page_title="Phylogeny photo browser", page_icon="🌿", layout="wide")
@@ -168,12 +167,15 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-def read_uploaded_or_default(uploaded_file) -> tuple[str, str]:
-    if uploaded_file is not None:
-        return uploaded_file.getvalue().decode("utf-8-sig"), uploaded_file.name
-    if DEFAULT_TREE.exists():
-        return DEFAULT_TREE.read_text(encoding="utf-8-sig"), DEFAULT_TREE.name
-    raise ValueError("Upload a Newick tree file.")
+def clear_workspace() -> None:
+    """Clear the paired tree/photo workspace without touching disk files."""
+    st.session_state.tree_upload_generation = int(st.session_state.get("tree_upload_generation", 0)) + 1
+    st.session_state.tree_identity = None
+    st.session_state.tree_is_cleared = True
+    st.session_state.selected_tip_names = []
+    st.session_state.photo_root_input = ""
+    st.session_state.preference_root_key = ""
+    st.session_state.loaded_photo_preferences = {}
 
 
 def choose_photo_root() -> None:
@@ -208,12 +210,22 @@ def choose_photo_root() -> None:
 
 with st.sidebar:
     st.header("Inputs")
-    uploaded_tree = st.file_uploader("Newick tree", type=["nwk", "newick", "tree", "tre"])
-    clear_current_tree = st.button("Clear current tree", width="stretch")
+    tree_upload_generation = int(st.session_state.get("tree_upload_generation", 0))
+    uploaded_tree = st.file_uploader(
+        "Newick tree",
+        type=["nwk", "newick", "tree", "tre"],
+        key=f"tree_upload_{tree_upload_generation}",
+    )
+    st.button("Clear current tree", width="stretch", on_click=clear_workspace)
     uploaded_metadata = st.file_uploader("Metadata CSV (optional)", type=["csv"])
 
+if uploaded_tree is None:
+    st.info("Upload a Newick tree to begin.")
+    st.stop()
+
 try:
-    newick_text, tree_source = read_uploaded_or_default(uploaded_tree)
+    newick_text = uploaded_tree.getvalue().decode("utf-8-sig")
+    tree_source = uploaded_tree.name
     tree = parse_newick(newick_text)
 except (ValueError, UnicodeDecodeError) as exc:
     st.error(str(exc))
@@ -227,9 +239,7 @@ if st.session_state.get("tree_identity") != tree_identity:
     st.session_state.tree_identity = tree_identity
     st.session_state.selected_tip_names = [tips[0]]
     st.session_state.tree_is_cleared = False
-    st.session_state.photo_root_input = str(APP_DIR / "sample_photos") if uploaded_tree is None else ""
-if clear_current_tree:
-    st.session_state.tree_is_cleared = True
+    st.session_state.photo_root_input = ""
 
 tree_is_cleared = st.session_state.get("tree_is_cleared", False)
 

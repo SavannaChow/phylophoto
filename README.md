@@ -28,7 +28,7 @@ python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The included `.tree` file loads automatically when no tree is uploaded. The photo root defaults to the included `sample_photos` folder. PearTree v1.3.1 is vendored under `peartree_component/`, so the tree and photos stay on the local machine and do not require a CDN.
+Upload a tree explicitly before choosing its photo root. Reloading the browser clears both inputs because browsers do not retain local file uploads; the app does not silently substitute another tree. PearTree v1.3.1 is vendored under `peartree_component/`, so the tree and photos stay on the local machine and do not require a CDN.
 
 To generate one full-name photo folder for every named tip in another tree:
 
