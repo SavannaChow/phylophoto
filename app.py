@@ -46,7 +46,7 @@ st.markdown(
     .phylogeny-left-panel {
         flex: 0 0 56%;
         width: auto !important;
-        min-width: 360px;
+        min-width: 0 !important;
         max-width: calc(75% - 5px);
         height: calc(100vh - 5rem);
         height: calc(100dvh - 5rem);
@@ -59,6 +59,7 @@ st.markdown(
     .phylogeny-left-panel > div[data-testid="stVerticalBlock"],
     .phylogeny-left-panel > div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"],
     .phylogeny-left-panel [data-testid="stCustomComponentV1"] {
+        min-width: 0 !important;
         height: 100% !important;
         min-height: 0 !important;
         gap: 0 !important;
@@ -67,6 +68,7 @@ st.markdown(
     .phylogeny-left-panel iframe {
         display: block;
         width: 100% !important;
+        min-width: 0 !important;
         height: calc(100vh - 5rem - 2px) !important;
         height: calc(100dvh - 5rem - 2px) !important;
         min-height: 478px !important;
@@ -76,7 +78,7 @@ st.markdown(
     .phylogeny-right-panel {
         flex: 1 1 auto;
         width: auto !important;
-        min-width: 300px;
+        min-width: 0 !important;
         height: calc(100vh - 5rem);
         height: calc(100dvh - 5rem);
         min-height: 480px;
@@ -97,6 +99,12 @@ st.markdown(
         cursor: col-resize;
         touch-action: none;
         user-select: none;
+    }
+    .phylogeny-drag-shield {
+        position: absolute;
+        inset: 0;
+        z-index: 19;
+        cursor: col-resize;
     }
     .phylogeny-splitter::after {
         content: "";
@@ -138,6 +146,7 @@ def read_uploaded_or_default(uploaded_file) -> tuple[str, str]:
 with st.sidebar:
     st.header("Inputs")
     uploaded_tree = st.file_uploader("Newick tree", type=["nwk", "newick", "tree", "tre"])
+    clear_current_tree = st.button("Clear current tree", width="stretch")
     photo_root_text = st.text_input("Photo root folder", value=str(APP_DIR / "sample_photos"))
     uploaded_metadata = st.file_uploader("Metadata CSV (optional)", type=["csv"])
 
@@ -204,6 +213,11 @@ tree_identity = (tree_source, peartree_newick)
 if st.session_state.get("tree_identity") != tree_identity:
     st.session_state.tree_identity = tree_identity
     st.session_state.selected_tip_names = [tips[0]]
+    st.session_state.tree_is_cleared = False
+if clear_current_tree:
+    st.session_state.tree_is_cleared = True
+
+tree_is_cleared = st.session_state.get("tree_is_cleared", False)
 
 panels_area = st.container()
 with panels_area:
@@ -211,19 +225,23 @@ with panels_area:
 
 with left_panel:
     st.markdown('<div id="phylogeny-tree-panel"></div>', unsafe_allow_html=True)
-    selection = peartree_viewer(
-        peartree_newick,
-        filename=tree_source,
-        selected_tips=st.session_state.selected_tip_names,
-        key="peartree-tree",
-        height=900,
-    )
-    returned_tips = selection.get("tips", [])
-    if isinstance(returned_tips, list):
-        selected_tips = list(dict.fromkeys(name for name in returned_tips if name in tips))
-        st.session_state.selected_tip_names = selected_tips
+    if tree_is_cleared:
+        selected_tips = []
+        st.info("Tree cleared. Upload a Newick tree in the sidebar to load another tree.")
     else:
-        selected_tips = list(st.session_state.selected_tip_names)
+        selection = peartree_viewer(
+            peartree_newick,
+            filename=tree_source,
+            selected_tips=st.session_state.selected_tip_names,
+            key="peartree-tree",
+            height=900,
+        )
+        returned_tips = selection.get("tips", [])
+        if isinstance(returned_tips, list):
+            selected_tips = list(dict.fromkeys(name for name in returned_tips if name in tips))
+            st.session_state.selected_tip_names = selected_tips
+        else:
+            selected_tips = list(st.session_state.selected_tip_names)
 
 with right_panel:
     st.markdown('<div id="sample-photo-panel"></div>', unsafe_allow_html=True)
@@ -306,6 +324,8 @@ components.html(
       right.classList.add('phylogeny-right-panel');
       left.style.flex = '0 0 56%';
       right.style.flex = '1 1 0';
+      left.style.minWidth = '0';
+      right.style.minWidth = '0';
 
       block.querySelector('.phylogeny-splitter')?.remove();
       const splitter = doc.createElement('div');
@@ -330,6 +350,7 @@ components.html(
       let startWidth = 0;
       let blockWidth = 0;
       let dragging = false;
+      let shield = null;
 
       const move = event => {
         if (!dragging) return;
@@ -343,6 +364,7 @@ components.html(
         if (!dragging) return;
         dragging = false;
         splitter.classList.remove('is-dragging');
+        shield?.remove();
         const percent = left.getBoundingClientRect().width / block.getBoundingClientRect().width * 100;
         window.localStorage.setItem('phylogeny-panel-percent', String(percent));
         window.dispatchEvent(new Event('resize'));
@@ -356,6 +378,11 @@ components.html(
         startWidth = left.getBoundingClientRect().width;
         blockWidth = block.getBoundingClientRect().width;
         splitter.classList.add('is-dragging');
+        shield = doc.createElement('div');
+        shield.className = 'phylogeny-drag-shield';
+        block.appendChild(shield);
+        shield.addEventListener('pointermove', move);
+        shield.addEventListener('pointerup', stop);
         doc.addEventListener('pointermove', move);
         doc.addEventListener('pointerup', stop);
       });

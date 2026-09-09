@@ -8,6 +8,7 @@ A small, local-only Streamlit app for browsing a Newick phylogeny and the sample
 - Uses PearTree's native tree display, visual-options palette, search, zoom, fit, ordering, rotation, subtree, colour, filtering, and bootstrap controls.
 - Uses PearTree's native reroot, midpoint-root, and temporal-root tools instead of a second set of Streamlit tree controls.
 - Clicking a PearTree tip or internal node sends its selected/descendant tip names to the photo panel.
+- Provides a local **Clear current tree** control; upload a Newick file to load the next tree.
 - Uses an independently scrollable photo panel and a draggable center divider.
 - Matches tip-derived prefixes to photo folders and shows all supported images recursively.
 - Shows missing and ambiguous folder matches in a warning table.
