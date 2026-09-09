@@ -81,12 +81,13 @@ def test_folder_matching_and_ambiguity(tmp_path: Path):
 def test_empty_photo_library_creation_copies_tree_and_full_tip_names(tmp_path: Path):
     (tmp_path / ".DS_Store").write_bytes(b"")
     assert folder_is_effectively_empty(tmp_path)
-    labels = photo_folder_labels(["S1_Acropora_sp2", "GCA_123", "S20_Acropora_hyacinthus"])
-    count, tree_copy = initialise_photo_library(tmp_path, labels, "new.tree", b"(S1,S20);")
-    assert count == 2
-    assert tree_copy.read_bytes() == b"(S1,S20);"
+    labels = photo_folder_labels(["S1_Acropora_sp2", "GCA_123", "Tan44_Acropora_typeD"])
+    count, tree_copy = initialise_photo_library(tmp_path, labels, "new.tree", b"(S1,GCA_123,Tan44);")
+    assert count == 3
+    assert tree_copy.read_bytes() == b"(S1,GCA_123,Tan44);"
     assert (tmp_path / "S1_Acropora_sp2").is_dir()
-    assert (tmp_path / "S20_Acropora_hyacinthus").is_dir()
+    assert (tmp_path / "GCA_123").is_dir()
+    assert (tmp_path / "Tan44_Acropora_typeD").is_dir()
 
 
 def test_photo_library_creation_rejects_nonempty_or_unsafe_targets(tmp_path: Path):

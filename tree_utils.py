@@ -171,7 +171,7 @@ def folder_is_effectively_empty(folder: Path) -> bool:
     return not any(path.name not in IGNORED_EMPTY_FOLDER_ENTRIES for path in folder.iterdir())
 
 
-def photo_folder_labels(tips: Iterable[str], pattern: str = r"^S\d+(?:_|$)") -> list[str]:
+def photo_folder_labels(tips: Iterable[str], pattern: str = "") -> list[str]:
     """Return full tip labels that should become sample-photo folders."""
     try:
         matcher = re.compile(pattern) if pattern else None

@@ -16,14 +16,14 @@ def main() -> None:
     parser.add_argument("photo_root", type=Path, help="Folder under which sample folders are created")
     parser.add_argument(
         "--tip-regex",
-        default=r"^S\d+(?:_|$)",
-        help=r"Only create folders for full tip labels matching this regex (default: ^S\d+(?:_|$))",
+        default="",
+        help="Optional regex used to filter tip labels (default: create a folder for every named tip)",
     )
     args = parser.parse_args()
 
     tree = Phylo.read(args.tree, "newick")
-    pattern = re.compile(args.tip_regex)
-    names = [tip.name for tip in tree.get_terminals() if tip.name and pattern.search(tip.name)]
+    pattern = re.compile(args.tip_regex) if args.tip_regex else None
+    names = [tip.name for tip in tree.get_terminals() if tip.name and (pattern is None or pattern.search(tip.name))]
     if len(names) != len(set(names)):
         raise SystemExit("Matching tip labels are not unique; no folders were created.")
 

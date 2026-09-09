@@ -207,7 +207,6 @@ if st.session_state.get("tree_identity") != tree_identity:
     st.session_state.selected_tip_names = [tips[0]]
     st.session_state.tree_is_cleared = False
     st.session_state.photo_root_input = str(APP_DIR / "sample_photos") if uploaded_tree is None else ""
-    st.session_state.folder_creation_regex = r"^S\d+(?:_|$)"
 if clear_current_tree:
     st.session_state.tree_is_cleared = True
 
@@ -239,14 +238,9 @@ if photo_root is not None and photo_root.exists() and photo_root.is_dir():
 if photo_root_is_empty and photo_root is not None:
     with st.sidebar:
         st.warning("This folder is empty. Set it up for the loaded tree?")
-        creation_regex = st.text_input(
-            "Folder-creation tip regex",
-            key="folder_creation_regex",
-            help="The full matching tip label becomes the folder name. Leave blank to include every tip.",
-        )
         try:
-            folders_to_create = photo_folder_labels(tips, creation_regex)
-            st.caption(f"{len(folders_to_create)} folders will be created from {len(tips)} tree tips.")
+            folders_to_create = photo_folder_labels(tips)
+            st.caption(f"One full-name folder will be created for each of the {len(folders_to_create)} named tree tips.")
             with st.expander("Review folder names"):
                 st.dataframe(pd.DataFrame({"folder_name": folders_to_create}), hide_index=True, width="stretch")
             if st.button(
