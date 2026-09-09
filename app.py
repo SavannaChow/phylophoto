@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
 
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
 from peartree_component import peartree_viewer
-from tree_utils import match_photo_folders, parse_newick, photo_files, tip_labels, tree_to_newick
+from tree_utils import (
+    folder_is_effectively_empty,
+    initialise_photo_library,
+    match_photo_folders,
+    parse_newick,
+    photo_files,
+    photo_folder_labels,
+    tip_labels,
+    tree_to_newick,
+)
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -143,11 +154,40 @@ def read_uploaded_or_default(uploaded_file) -> tuple[str, str]:
     raise ValueError("Upload a Newick tree file.")
 
 
+def choose_photo_root() -> None:
+    """Open the native macOS folder chooser and store the selected path."""
+    if sys.platform != "darwin":
+        st.session_state.folder_picker_error = "The Choose folder button currently requires macOS; enter the path above."
+        return
+    script = (
+        'tell application "Finder"\n'
+        "activate\n"
+        'set selectedFolder to choose folder with prompt "Choose the folder containing sample photo folders"\n'
+        "return POSIX path of selectedFolder\n"
+        "end tell"
+    )
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        st.session_state.folder_picker_error = f"Could not open the folder chooser: {exc}"
+        return
+    if result.returncode == 0 and result.stdout.strip():
+        st.session_state.photo_root_input = result.stdout.strip()
+        st.session_state.folder_picker_error = ""
+    elif "User canceled" not in result.stderr:
+        st.session_state.folder_picker_error = result.stderr.strip() or "No folder was selected."
+
+
 with st.sidebar:
     st.header("Inputs")
     uploaded_tree = st.file_uploader("Newick tree", type=["nwk", "newick", "tree", "tre"])
     clear_current_tree = st.button("Clear current tree", width="stretch")
-    photo_root_text = st.text_input("Photo root folder", value=str(APP_DIR / "sample_photos"))
     uploaded_metadata = st.file_uploader("Metadata CSV (optional)", type=["csv"])
 
 try:
@@ -159,9 +199,76 @@ except (ValueError, UnicodeDecodeError) as exc:
 
 tips = tip_labels(tree)
 peartree_newick = tree_to_newick(tree)
+tree_bytes = uploaded_tree.getvalue() if uploaded_tree is not None else DEFAULT_TREE.read_bytes()
+
+tree_identity = (tree_source, peartree_newick)
+if st.session_state.get("tree_identity") != tree_identity:
+    st.session_state.tree_identity = tree_identity
+    st.session_state.selected_tip_names = [tips[0]]
+    st.session_state.tree_is_cleared = False
+    st.session_state.photo_root_input = str(APP_DIR / "sample_photos") if uploaded_tree is None else ""
+    st.session_state.folder_creation_regex = r"^S\d+(?:_|$)"
+if clear_current_tree:
+    st.session_state.tree_is_cleared = True
+
+tree_is_cleared = st.session_state.get("tree_is_cleared", False)
 
 with st.sidebar:
     st.caption(f"{len(tips)} tips · {tree_source}")
+    st.divider()
+    st.header("Photo folders")
+    photo_root_text = st.text_input(
+        "Folder containing node photo folders",
+        key="photo_root_input",
+        placeholder="Choose or enter a local folder",
+    )
+    st.button("Choose folder…", on_click=choose_photo_root, width="stretch")
+    if st.session_state.get("folder_picker_error"):
+        st.error(st.session_state.folder_picker_error)
+    if st.session_state.get("photo_library_created"):
+        st.success(st.session_state.pop("photo_library_created"))
+
+photo_root: Path | None = Path(photo_root_text).expanduser() if photo_root_text.strip() else None
+photo_root_is_empty = False
+if photo_root is not None and photo_root.exists() and photo_root.is_dir():
+    try:
+        photo_root_is_empty = folder_is_effectively_empty(photo_root)
+    except OSError as exc:
+        st.error(f"Could not inspect the selected photo folder: {exc}")
+
+if photo_root_is_empty and photo_root is not None:
+    with st.sidebar:
+        st.warning("This folder is empty. Set it up for the loaded tree?")
+        creation_regex = st.text_input(
+            "Folder-creation tip regex",
+            key="folder_creation_regex",
+            help="The full matching tip label becomes the folder name. Leave blank to include every tip.",
+        )
+        try:
+            folders_to_create = photo_folder_labels(tips, creation_regex)
+            st.caption(f"{len(folders_to_create)} folders will be created from {len(tips)} tree tips.")
+            with st.expander("Review folder names"):
+                st.dataframe(pd.DataFrame({"folder_name": folders_to_create}), hide_index=True, width="stretch")
+            if st.button(
+                f"Create {len(folders_to_create)} folders + copy tree",
+                type="primary",
+                width="stretch",
+                disabled=not folders_to_create,
+            ):
+                count, tree_copy = initialise_photo_library(
+                    photo_root,
+                    folders_to_create,
+                    tree_source,
+                    tree_bytes,
+                )
+                st.session_state.photo_library_created = (
+                    f"Created {count} node folders and copied the tree as {tree_copy.name}."
+                )
+                st.rerun()
+        except (ValueError, OSError) as exc:
+            st.error(str(exc))
+
+with st.sidebar:
     st.divider()
     st.header("Folder matching")
     rule = st.selectbox("Tip-to-folder key", ["Full tip label", "Leading fields", "Regular expression"])
@@ -191,9 +298,7 @@ if uploaded_metadata is not None:
         st.error(f"Could not read metadata CSV: {exc}")
 
 matches = {}
-photo_root: Path | None = None
-if photo_root_text.strip():
-    photo_root = Path(photo_root_text).expanduser()
+if photo_root is not None:
     if photo_root.exists() and photo_root.is_dir():
         try:
             matches = match_photo_folders(
@@ -208,16 +313,6 @@ if photo_root_text.strip():
             )
         except (ValueError, OSError) as exc:
             st.error(f"Could not match photo folders: {exc}")
-
-tree_identity = (tree_source, peartree_newick)
-if st.session_state.get("tree_identity") != tree_identity:
-    st.session_state.tree_identity = tree_identity
-    st.session_state.selected_tip_names = [tips[0]]
-    st.session_state.tree_is_cleared = False
-if clear_current_tree:
-    st.session_state.tree_is_cleared = True
-
-tree_is_cleared = st.session_state.get("tree_is_cleared", False)
 
 panels_area = st.container()
 with panels_area:

@@ -6,9 +6,12 @@ from tree_utils import (
     assign_node_ids,
     bootstrap_value,
     descendant_tip_names,
+    folder_is_effectively_empty,
+    initialise_photo_library,
     match_photo_folders,
     parse_newick,
     prefix_key,
+    photo_folder_labels,
     root_tree,
     tree_to_newick,
 )
@@ -73,3 +76,22 @@ def test_folder_matching_and_ambiguity(tmp_path: Path):
     assert matches["A_one"].status == "matched"
     assert matches["B_one"].status == "ambiguous"
     assert matches["C_one"].status == "missing"
+
+
+def test_empty_photo_library_creation_copies_tree_and_full_tip_names(tmp_path: Path):
+    (tmp_path / ".DS_Store").write_bytes(b"")
+    assert folder_is_effectively_empty(tmp_path)
+    labels = photo_folder_labels(["S1_Acropora_sp2", "GCA_123", "S20_Acropora_hyacinthus"])
+    count, tree_copy = initialise_photo_library(tmp_path, labels, "new.tree", b"(S1,S20);")
+    assert count == 2
+    assert tree_copy.read_bytes() == b"(S1,S20);"
+    assert (tmp_path / "S1_Acropora_sp2").is_dir()
+    assert (tmp_path / "S20_Acropora_hyacinthus").is_dir()
+
+
+def test_photo_library_creation_rejects_nonempty_or_unsafe_targets(tmp_path: Path):
+    (tmp_path / "existing").mkdir()
+    with pytest.raises(ValueError, match="not empty"):
+        initialise_photo_library(tmp_path, ["S1_safe"], "tree.nwk", b"(S1);")
+    with pytest.raises(ValueError, match="safely"):
+        photo_folder_labels(["S1/unsafe"], pattern="")

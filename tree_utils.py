@@ -14,6 +14,7 @@ from Bio.Phylo.BaseTree import Clade, Tree
 
 
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".bmp"}
+IGNORED_EMPTY_FOLDER_ENTRIES = {".DS_Store"}
 
 
 @dataclass(frozen=True)
@@ -163,6 +164,69 @@ def photo_files(folder: Path) -> list[Path]:
         (path for path in folder.rglob("*") if path.is_file() and path.suffix.lower() in PHOTO_EXTENSIONS),
         key=lambda path: str(path).lower(),
     )
+
+
+def folder_is_effectively_empty(folder: Path) -> bool:
+    """Return true when a folder contains no user files or folders."""
+    return not any(path.name not in IGNORED_EMPTY_FOLDER_ENTRIES for path in folder.iterdir())
+
+
+def photo_folder_labels(tips: Iterable[str], pattern: str = r"^S\d+(?:_|$)") -> list[str]:
+    """Return full tip labels that should become sample-photo folders."""
+    try:
+        matcher = re.compile(pattern) if pattern else None
+    except re.error as exc:
+        raise ValueError(f"Invalid folder-creation regex: {exc}") from exc
+
+    labels = [tip for tip in tips if matcher is None or matcher.search(tip)]
+    unsafe = [label for label in labels if Path(label).name != label or label in {"", ".", ".."} or "\x00" in label]
+    if unsafe:
+        raise ValueError("These tip labels cannot safely be folder names: " + ", ".join(unsafe))
+    return labels
+
+
+def initialise_photo_library(
+    photo_root: Path,
+    folder_names: Iterable[str],
+    tree_filename: str,
+    tree_bytes: bytes,
+) -> tuple[int, Path]:
+    """Populate an empty photo root with sample folders and a tree-file copy."""
+    if not photo_root.exists() or not photo_root.is_dir():
+        raise ValueError("The selected photo root does not exist or is not a directory.")
+    if not folder_is_effectively_empty(photo_root):
+        raise ValueError("The selected photo root is not empty; no folders were created.")
+
+    names = list(dict.fromkeys(folder_names))
+    if not names:
+        raise ValueError("No tip labels match the folder-creation rule.")
+    # Reuse the same validation used by photo_folder_labels, without filtering.
+    photo_folder_labels(names, pattern="")
+    casefolded = [name.casefold() for name in names]
+    if len(casefolded) != len(set(casefolded)):
+        raise ValueError("Some tip labels collide on a case-insensitive filesystem.")
+
+    safe_tree_name = Path(tree_filename).name
+    if not safe_tree_name or safe_tree_name in {".", ".."}:
+        raise ValueError("The tree filename is not safe to copy.")
+    if safe_tree_name.casefold() in set(casefolded):
+        raise ValueError("The tree filename conflicts with a sample folder name.")
+    tree_copy = photo_root / safe_tree_name
+
+    created_folders: list[Path] = []
+    try:
+        tree_copy.write_bytes(tree_bytes)
+        for name in names:
+            folder = photo_root / name
+            folder.mkdir()
+            created_folders.append(folder)
+    except OSError:
+        for folder in reversed(created_folders):
+            folder.rmdir()
+        if tree_copy.exists():
+            tree_copy.unlink()
+        raise
+    return len(names), tree_copy
 
 
 def assign_node_ids(tree: Tree) -> tuple[dict[str, Clade], dict[int, str]]:
