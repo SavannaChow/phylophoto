@@ -10,6 +10,7 @@ from tree_utils import (
     parse_newick,
     prefix_key,
     root_tree,
+    tree_to_newick,
 )
 
 
@@ -21,6 +22,13 @@ def test_parse_and_tip_labels_are_unique():
     assert [tip.name for tip in tree.get_terminals()] == ["A_one", "A_two", "B_one", "C_one", "C_two"]
     with pytest.raises(ValueError, match="unique"):
         parse_newick("(A:1,A:1);")
+
+
+def test_newick_round_trip_for_peartree():
+    reparsed = parse_newick(tree_to_newick(parse_newick("((A:1,B:2)98:3,C:4);")))
+    assert [tip.name for tip in reparsed.get_terminals()] == ["A", "B", "C"]
+    internal = next(clade for clade in reparsed.get_nonterminals() if clade is not reparsed.root)
+    assert bootstrap_value(internal) == "98"
 
 
 def test_single_outgroup_root_and_missing_name():

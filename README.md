@@ -1,15 +1,14 @@
 # Phylogeny photo browser
 
-A small, local-only Streamlit app for browsing a Newick phylogeny and the sample photos associated with its tips.
+A small, local-only Streamlit app for browsing a Newick phylogeny and the sample photos associated with its tips. This branch embeds the official PearTree viewer locally.
 
 ## Features
 
 - Parses Newick trees and extracts all uniquely named tips.
-- Keeps the original root, roots on one tip, roots on the MRCA of several tips, or midpoint-roots the tree.
-- Reports every descendant included when a selected multi-tip outgroup is not monophyletic.
-- Displays a rooted rectangular phylogram with clickable tips and internal nodes, plus a searchable selector fallback.
-- Keeps rooting and display settings after a browser refresh.
-- Uses independently scrollable tree/photo panels with a draggable center divider.
+- Uses PearTree's native tree display, visual-options palette, search, zoom, fit, ordering, rotation, subtree, colour, filtering, and bootstrap controls.
+- Uses PearTree's native reroot, midpoint-root, and temporal-root tools instead of a second set of Streamlit tree controls.
+- Clicking a PearTree tip or internal node sends its selected/descendant tip names to the photo panel.
+- Uses an independently scrollable photo panel and a draggable center divider.
 - Matches tip-derived prefixes to photo folders and shows all supported images recursively.
 - Shows missing and ambiguous folder matches in a warning table.
 - Optionally displays CSV metadata rows for the selected tip(s).
@@ -25,7 +24,7 @@ python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The included `.tree` file loads automatically when no tree is uploaded. The photo root defaults to the included `sample_photos` folder. The app only reads local files and Streamlit binds to the local machine by default.
+The included `.tree` file loads automatically when no tree is uploaded. The photo root defaults to the included `sample_photos` folder. PearTree v1.3.1 is vendored under `peartree_component/`, so the tree and photos stay on the local machine and do not require a CDN.
 
 For the included tree, `sample_photos` has one folder for each tip whose full label begins with `S` followed by a number. To regenerate those folders for another tree:
 
@@ -52,7 +51,7 @@ Supported image extensions are JPG/JPEG, PNG, GIF, WebP, TIFF, and BMP. Image di
 
 ## Metadata CSV
 
-Upload a CSV and choose the column containing the exact tree tip labels. When a tip or internal node is selected, matching metadata rows appear above the photos.
+Upload a CSV and choose the column containing the exact tree tip labels. When a tip or internal node is selected in PearTree, matching metadata rows appear above the photos.
 
 ## Test
 

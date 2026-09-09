@@ -1,0 +1,22 @@
+html, body, #peartree-viewer {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: transparent;
+}
+
+#peartree-error {
+  box-sizing: border-box;
+  margin: 1rem;
+  padding: .75rem 1rem;
+  border: 1px solid #dc2626;
+  border-radius: .4rem;
+  color: #dc2626;
+  font: 14px system-ui, sans-serif;
+  white-space: pre-wrap;
+}
