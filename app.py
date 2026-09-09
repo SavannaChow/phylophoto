@@ -177,7 +177,6 @@ def clear_workspace() -> None:
     st.session_state.preference_root_key = ""
     st.session_state.loaded_photo_preferences = {}
     st.session_state.peartree_root_request = {}
-    st.session_state.peartree_user_colours = []
 
 
 def choose_photo_root() -> None:
@@ -247,7 +246,6 @@ if st.session_state.get("tree_identity") != tree_identity:
     st.session_state.multiple_outgroups = []
     st.session_state.applied_rooting_preferences = {"mode": ROOTING_MODES[0], "outgroups": []}
     st.session_state.peartree_root_request = {}
-    st.session_state.peartree_user_colours = []
 
 tree_is_cleared = st.session_state.get("tree_is_cleared", False)
 
@@ -302,8 +300,6 @@ if st.session_state.get("preference_root_key") != preference_root_key:
     st.session_state.folder_match_case_sensitive = bool(folder_preferences.get("case_sensitive", False))
     peartree_preferences = loaded_preferences.get("peartree", {})
     st.session_state.peartree_settings = peartree_preferences if isinstance(peartree_preferences, dict) else {}
-    saved_user_colours = loaded_preferences.get("peartree_user_colours", [])
-    st.session_state.peartree_user_colours = saved_user_colours if isinstance(saved_user_colours, list) else []
     tree_display_preferences = loaded_preferences.get("tree_display", {})
     saved_branch_mode = tree_display_preferences.get("branch_lengths") if isinstance(tree_display_preferences, dict) else None
     st.session_state.branch_length_mode = (
@@ -482,7 +478,6 @@ with left_panel:
             filename=viewer_tree_filename,
             selected_tips=st.session_state.selected_tip_names,
             settings=st.session_state.get("peartree_settings", {}),
-            user_colours=st.session_state.get("peartree_user_colours", []),
             settings_save_request=int(st.session_state.get("settings_save_request", 0)),
             root_request=st.session_state.get("peartree_root_request", {}),
             key=f"peartree-tree-{int(st.session_state.get('tree_reset_sequence', 0))}",
@@ -635,7 +630,6 @@ def current_preferences() -> dict[str, object]:
             "case_sensitive": case_sensitive,
         },
         "peartree": st.session_state.get("peartree_settings", {}),
-        "peartree_user_colours": st.session_state.get("peartree_user_colours", []),
         "tree_display": {"branch_lengths": branch_length_mode},
         "rooting": st.session_state.get("applied_rooting_preferences", {"mode": "Original root", "outgroups": []}),
     })
@@ -651,8 +645,6 @@ if settings_snapshot_result is not None and photo_root is not None:
         if not isinstance(snapshot, dict):
             snapshot = {}
         st.session_state.peartree_settings = snapshot
-        user_colours = settings_snapshot_result.get("userColours")
-        st.session_state.peartree_user_colours = user_colours if isinstance(user_colours, list) else []
         try:
             preferences = current_preferences()
             saved_preferences_path = save_photo_preferences(photo_root, preferences)

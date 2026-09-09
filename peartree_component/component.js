@@ -55,9 +55,7 @@ function saveSettingsSnapshot(requestId) {
   lastSettingsSaveRequest = requestId;
   const settings = getSettings();
   settingsKey = JSON.stringify(settings);
-  reportValue(currentTips, settings, {
-    settingsSnapshot: { requestId, settings, userColours: controller.getUserColours?.() || [] },
-  });
+  reportValue(currentTips, settings, { settingsSnapshot: { requestId, settings } });
 }
 
 function applyRootRequest(request, attempt = 0) {
@@ -175,13 +173,11 @@ async function mountPearTree(args, theme) {
 
   const requested = normaliseTips(args.selectedTips);
   controller.onTreeLoad(() => {
-    controller.applyUserColours?.(Array.isArray(args.userColours) ? args.userColours : []);
     selectedTipsKey = "";
     applySelection(requested);
   });
   // Inline Newick can finish loading before onTreeLoad is registered.
   window.setTimeout(() => applySelection(requested), 0);
-  window.setTimeout(() => controller.applyUserColours?.(Array.isArray(args.userColours) ? args.userColours : []), 0);
   startSettingsWatcher();
 }
 
