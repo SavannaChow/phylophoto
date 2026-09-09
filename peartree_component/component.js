@@ -8,6 +8,8 @@ let selectedTipsKey = "";
 let currentTips = [];
 let settingsPoller = null;
 let settingsKey = "";
+let lastSettingsSaveRequest = 0;
+let lastRootRequest = 0;
 
 function postStreamlitMessage(type, extra = {}) {
   window.parent.postMessage({
@@ -48,6 +50,45 @@ function reportValue(names, settings = getSettings(), extra = {}) {
   setComponentValue({ tips: names, settings, ...extra });
 }
 
+function saveSettingsSnapshot(requestId) {
+  if (!controller || !requestId || requestId <= lastSettingsSaveRequest) return;
+  lastSettingsSaveRequest = requestId;
+  const settings = getSettings();
+  settingsKey = JSON.stringify(settings);
+  reportValue(currentTips, settings, { settingsSnapshot: { requestId, settings } });
+}
+
+function applyRootRequest(request, attempt = 0) {
+  const requestId = Number(request?.requestId) || 0;
+  if (!controller || !requestId || requestId <= lastRootRequest) return;
+  if (request?.mode === "midpoint") {
+    lastRootRequest = requestId;
+    controller.midpointRoot();
+    window.setTimeout(() => reportValue(currentTips, getSettings(), {
+      rootApplied: { requestId, mode: "midpoint", tips: [] },
+    }), 150);
+    return;
+  }
+  const names = normaliseTips(request?.tips);
+  applySelection(names);
+  const button = viewer.querySelector("#btn-reroot");
+  if ((!button || button.disabled) && attempt < 20) {
+    window.setTimeout(() => applyRootRequest(request, attempt + 1), 50);
+    return;
+  }
+  lastRootRequest = requestId;
+  if (!names.length || !button || button.disabled) {
+    reportValue(currentTips, getSettings(), {
+      rootApplied: { requestId, tips: names, error: "PearTree could not reroot on this selection." },
+    });
+    return;
+  }
+  button.click();
+  window.setTimeout(() => reportValue(currentTips, getSettings(), {
+    rootApplied: { requestId, mode: "selection", tips: names },
+  }), 150);
+}
+
 function startSettingsWatcher() {
   window.clearInterval(settingsPoller);
   settingsKey = JSON.stringify(getSettings());
@@ -82,6 +123,7 @@ async function mountPearTree(args, theme) {
   viewer.hidden = false;
   errorBox.hidden = true;
   selectedTipsKey = "";
+  lastRootRequest = 0;
 
   controller = await window.PearTreeEmbed.embed({
     container: viewer,
@@ -159,6 +201,8 @@ window.addEventListener("message", async event => {
         }
       }
     }
+    saveSettingsSnapshot(Number(args.settingsSaveRequest) || 0);
+    applyRootRequest(args.rootRequest || {});
   } catch (error) {
     showError(error);
   }
