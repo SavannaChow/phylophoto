@@ -10,7 +10,6 @@ let settingsPoller = null;
 let settingsKey = "";
 let lastSettingsSaveRequest = 0;
 let lastRootRequest = 0;
-let pendingSnapshot = 0;
 
 function postStreamlitMessage(type, extra = {}) {
   window.parent.postMessage({
@@ -56,23 +55,7 @@ function saveSettingsSnapshot(requestId) {
   lastSettingsSaveRequest = requestId;
   const settings = getSettings();
   settingsKey = JSON.stringify(settings);
-  pendingSnapshot = requestId;
-  const button = viewer.querySelector("#btn-export-tree");
-  if (!button || button.disabled) {
-    reportValue(currentTips, settings, { settingsSnapshot: { requestId, settings } });
-    return;
-  }
-  button.click();
-  const nexus = viewer.querySelector('input[name="exp-format"][value="nexus"]');
-  if (nexus) { nexus.checked = true; nexus.dispatchEvent(new Event("change", { bubbles: true })); }
-  const state = viewer.querySelector("#exp-store-state");
-  if (state) state.checked = false;
-  const mode = viewer.querySelector("#exp-store-settings-mode");
-  if (mode) mode.value = "none";
-  const full = viewer.querySelector('input[name="exp-scope"][value="full"]');
-  if (full) full.checked = true;
-  viewer.querySelector("#exp-all-btn")?.click();
-  viewer.querySelector("#exp-download-btn")?.click();
+  reportValue(currentTips, settings, { settingsSnapshot: { requestId, settings } });
 }
 
 function applyRootRequest(request, attempt = 0) {
@@ -176,16 +159,6 @@ async function mountPearTree(args, theme) {
       toolbarSections: "all",
     },
   });
-
-  if (typeof window.peartree?.setExportSaveHandler === "function") {
-    window.peartree.setExportSaveHandler(payload => {
-      const requestId = pendingSnapshot;
-      pendingSnapshot = 0;
-      reportValue(currentTips, getSettings(), {
-        settingsSnapshot: { requestId, settings: getSettings(), treeContent: payload?.content },
-      });
-    });
-  }
 
   unsubscribeSelection = controller.onSelectionChanged((tips) => {
     const names = normaliseTips(tips);

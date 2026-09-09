@@ -13,19 +13,16 @@ import streamlit.components.v1 as components
 
 from peartree_component import peartree_viewer
 from tree_utils import (
-    NODE_STYLES_FILENAME,
     create_missing_photo_folders,
     equalise_branch_lengths,
     load_photo_preferences,
     match_photo_folders,
-    merge_node_annotations,
     missing_photo_folder_labels,
     parse_tree_text,
     photo_files,
     photo_folder_labels,
     proportionalise_branch_lengths,
     save_photo_preferences,
-    save_node_styles,
     tip_labels,
     tree_to_newick,
 )
@@ -445,14 +442,6 @@ if photo_root is not None:
 
 viewer_tree_text = peartree_newick
 viewer_tree_filename = tree_source
-node_styles = library_preferences.get("node_styles", {})
-if photo_root is not None and isinstance(node_styles, dict) and node_styles.get("file") == NODE_STYLES_FILENAME:
-    try:
-        styled_text = (photo_root / NODE_STYLES_FILENAME).read_text(encoding="utf-8")
-        styled_tree = parse_tree_text(styled_text, NODE_STYLES_FILENAME)
-        viewer_tree_text = tree_to_newick(merge_node_annotations(tree, styled_tree))
-    except (OSError, ValueError) as exc:
-        st.warning(f"Could not restore saved node colours: {exc}")
 current_tree_label = viewer_tree_filename
 if branch_length_mode != "Original":
     try:
@@ -657,12 +646,7 @@ if settings_snapshot_result is not None and photo_root is not None:
             snapshot = {}
         st.session_state.peartree_settings = snapshot
         try:
-            tree_content = settings_snapshot_result.get("treeContent")
-            if isinstance(tree_content, str) and tree_content.strip():
-                save_node_styles(photo_root, tree_content)
             preferences = current_preferences()
-            if isinstance(tree_content, str) and tree_content.strip():
-                preferences["node_styles"] = {"file": NODE_STYLES_FILENAME}
             saved_preferences_path = save_photo_preferences(photo_root, preferences)
             st.session_state.loaded_photo_preferences = preferences
             st.session_state.preferences_saved = (

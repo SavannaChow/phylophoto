@@ -16,7 +16,6 @@ from Bio.Phylo.BaseTree import Clade, Tree
 
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".bmp"}
 PREFERENCES_FILENAME = "phylogeny_photo_preferences.json"
-NODE_STYLES_FILENAME = "peartree_node_styles.nexus"
 
 
 @dataclass(frozen=True)
@@ -73,34 +72,6 @@ def parse_tree_text(text: str, filename: str) -> Tree:
             raise ValueError("The saved NEXUS tree has duplicate tip labels.")
         return tree
     return parse_newick(text)
-
-
-def merge_node_annotations(tree: Tree, styled_tree: Tree) -> Tree:
-    """Copy PearTree node annotations by root-independent clade split."""
-    result = copy.deepcopy(tree)
-    all_tips = frozenset(t.name for t in result.get_terminals())
-    if all_tips != frozenset(t.name for t in styled_tree.get_terminals()):
-        raise ValueError("Saved node styles belong to a different tree.")
-
-    def key(clade: Clade) -> tuple[str, ...]:
-        side = frozenset(t.name for t in clade.get_terminals())
-        other = all_tips - side
-        chosen = side if len(side) <= len(other) else other
-        return tuple(sorted(chosen))
-
-    annotations = {key(c): c.comment for c in styled_tree.find_clades() if c.comment}
-    for clade in result.find_clades():
-        if key(clade) in annotations:
-            clade.comment = annotations[key(clade)]
-    return result
-
-
-def save_node_styles(photo_root: Path, content: str) -> Path:
-    path = photo_root / NODE_STYLES_FILENAME
-    temporary = photo_root / f".{NODE_STYLES_FILENAME}.tmp"
-    temporary.write_text(content, encoding="utf-8")
-    temporary.replace(path)
-    return path
 
 
 def tip_labels(tree: Tree) -> list[str]:
