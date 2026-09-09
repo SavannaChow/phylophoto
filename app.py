@@ -14,10 +14,12 @@ from peartree_component import peartree_viewer
 from tree_utils import (
     folder_is_effectively_empty,
     initialise_photo_library,
+    load_photo_preferences,
     match_photo_folders,
     parse_newick,
     photo_files,
     photo_folder_labels,
+    save_photo_preferences,
     tip_labels,
     tree_to_newick,
 )
@@ -235,6 +237,43 @@ if photo_root is not None and photo_root.exists() and photo_root.is_dir():
     except OSError as exc:
         st.error(f"Could not inspect the selected photo folder: {exc}")
 
+preference_root_key = str(photo_root.resolve()) if photo_root is not None and photo_root.is_dir() else ""
+if st.session_state.get("preference_root_key") != preference_root_key:
+    st.session_state.preference_root_key = preference_root_key
+    loaded_preferences: dict[str, object] = {}
+    if preference_root_key:
+        try:
+            loaded_preferences = load_photo_preferences(photo_root)
+        except ValueError as exc:
+            st.session_state.preference_load_error = str(exc)
+    folder_preferences = loaded_preferences.get("folder_matching", {})
+    if not isinstance(folder_preferences, dict):
+        folder_preferences = {}
+    saved_rule = folder_preferences.get("rule")
+    st.session_state.folder_match_rule = (
+        saved_rule if saved_rule in {"Full tip label", "Leading fields", "Regular expression"} else "Full tip label"
+    )
+    saved_delimiter = folder_preferences.get("delimiter", "_")
+    st.session_state.folder_match_delimiter = saved_delimiter if isinstance(saved_delimiter, str) else "_"
+    try:
+        saved_field_count = max(1, int(folder_preferences.get("field_count", 1)))
+    except (TypeError, ValueError):
+        saved_field_count = 1
+    st.session_state.folder_match_field_count = saved_field_count
+    saved_regex = folder_preferences.get("regex", r"^([^_]+)")
+    st.session_state.folder_match_regex = saved_regex if isinstance(saved_regex, str) else r"^([^_]+)"
+    saved_match_mode = folder_preferences.get("match_mode")
+    st.session_state.folder_match_mode = (
+        saved_match_mode if saved_match_mode in {"Equals key", "Starts with key"} else "Equals key"
+    )
+    st.session_state.folder_match_case_sensitive = bool(folder_preferences.get("case_sensitive", False))
+    peartree_preferences = loaded_preferences.get("peartree", {})
+    st.session_state.peartree_settings = peartree_preferences if isinstance(peartree_preferences, dict) else {}
+
+with st.sidebar:
+    if st.session_state.get("preference_load_error"):
+        st.warning(st.session_state.pop("preference_load_error"))
+
 if photo_root_is_empty and photo_root is not None:
     with st.sidebar:
         st.warning("This folder is empty. Set it up for the loaded tree?")
@@ -265,17 +304,35 @@ if photo_root_is_empty and photo_root is not None:
 with st.sidebar:
     st.divider()
     st.header("Folder matching")
-    rule = st.selectbox("Tip-to-folder key", ["Full tip label", "Leading fields", "Regular expression"])
+    rule = st.selectbox(
+        "Tip-to-folder key",
+        ["Full tip label", "Leading fields", "Regular expression"],
+        key="folder_match_rule",
+    )
     delimiter = "_"
     field_count = 1
     regex = ""
     if rule == "Leading fields":
-        delimiter = st.text_input("Delimiter", value="_")
-        field_count = st.number_input("Number of leading fields", min_value=1, value=1, step=1)
+        delimiter = st.text_input("Delimiter", key="folder_match_delimiter")
+        field_count = st.number_input(
+            "Number of leading fields",
+            min_value=1,
+            step=1,
+            key="folder_match_field_count",
+        )
     elif rule == "Regular expression":
-        regex = st.text_input("Regex (first capture group is used)", value=r"^([^_]+)")
-    match_mode = st.radio("Folder-name comparison", ["Equals key", "Starts with key"])
-    case_sensitive = st.checkbox("Case-sensitive matching", value=False)
+        regex = st.text_input("Regex (first capture group is used)", key="folder_match_regex")
+    match_mode = st.radio(
+        "Folder-name comparison",
+        ["Equals key", "Starts with key"],
+        key="folder_match_mode",
+    )
+    case_sensitive = st.checkbox("Case-sensitive matching", key="folder_match_case_sensitive")
+    save_preferences_requested = st.button(
+        "Save preferences to this folder",
+        width="stretch",
+        disabled=not preference_root_key or photo_root_is_empty,
+    )
 
 metadata: pd.DataFrame | None = None
 metadata_tip_column: str | None = None
@@ -322,6 +379,7 @@ with left_panel:
             peartree_newick,
             filename=tree_source,
             selected_tips=st.session_state.selected_tip_names,
+            settings=st.session_state.get("peartree_settings", {}),
             key="peartree-tree",
             height=900,
         )
@@ -331,6 +389,9 @@ with left_panel:
             st.session_state.selected_tip_names = selected_tips
         else:
             selected_tips = list(st.session_state.selected_tip_names)
+        returned_settings = selection.get("settings", {})
+        if isinstance(returned_settings, dict):
+            st.session_state.peartree_settings = returned_settings
 
 with right_panel:
     st.markdown('<div id="sample-photo-panel"></div>', unsafe_allow_html=True)
@@ -393,6 +454,27 @@ elif matches:
             st.dataframe(pd.DataFrame(warning_rows), hide_index=True, width="stretch")
         else:
             st.success("Every tip has one matching photo folder.")
+
+if save_preferences_requested and photo_root is not None:
+    preferences = {
+        "version": 1,
+        "folder_matching": {
+            "rule": rule,
+            "delimiter": st.session_state.get("folder_match_delimiter", "_"),
+            "field_count": int(st.session_state.get("folder_match_field_count", 1)),
+            "regex": st.session_state.get("folder_match_regex", r"^([^_]+)"),
+            "match_mode": match_mode,
+            "case_sensitive": case_sensitive,
+        },
+        "peartree": st.session_state.get("peartree_settings", {}),
+    }
+    try:
+        saved_preferences_path = save_photo_preferences(photo_root, preferences)
+        with st.sidebar:
+            st.success(f"Saved {saved_preferences_path.name}")
+    except ValueError as exc:
+        with st.sidebar:
+            st.error(str(exc))
 
 # Streamlit columns do not include a draggable divider. This local component
 # changes only the widths of the two parent columns.

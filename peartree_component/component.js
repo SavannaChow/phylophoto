@@ -5,6 +5,9 @@ let controller = null;
 let unsubscribeSelection = null;
 let currentTreeKey = null;
 let selectedTipsKey = "";
+let currentTips = [];
+let settingsPoller = null;
+let settingsKey = "";
 
 function postStreamlitMessage(type, extra = {}) {
   window.parent.postMessage({
@@ -32,12 +35,39 @@ function normaliseTips(value) {
   return [...new Set(value.filter(name => typeof name === "string"))];
 }
 
+function tipsKey(names) {
+  return JSON.stringify([...names].sort());
+}
+
+function getSettings() {
+  const settings = controller?.getSettings?.();
+  return settings && typeof settings === "object" ? settings : {};
+}
+
+function reportValue(names, settings = getSettings()) {
+  setComponentValue({ tips: names, settings });
+}
+
+function startSettingsWatcher() {
+  window.clearInterval(settingsPoller);
+  settingsKey = JSON.stringify(getSettings());
+  settingsPoller = window.setInterval(() => {
+    if (!controller) return;
+    const settings = getSettings();
+    const key = JSON.stringify(settings);
+    if (key === settingsKey) return;
+    settingsKey = key;
+    reportValue(currentTips, settings);
+  }, 800);
+}
+
 function applySelection(tips) {
   if (!controller) return;
   const names = normaliseTips(tips);
-  const key = JSON.stringify(names);
+  const key = tipsKey(names);
   if (key === selectedTipsKey) return;
   selectedTipsKey = key;
+  currentTips = names;
   controller.getSelectionChangedListener()(names.length ? names : null);
 }
 
@@ -47,6 +77,7 @@ async function mountPearTree(args, theme) {
   }
 
   unsubscribeSelection?.();
+  window.clearInterval(settingsPoller);
   viewer.replaceChildren();
   viewer.hidden = false;
   errorBox.hidden = true;
@@ -66,6 +97,7 @@ async function mountPearTree(args, theme) {
       paddingRight: "4",
       paddingTop: "4",
       paddingBottom: "4",
+      ...(args.settings && typeof args.settings === "object" ? args.settings : {}),
     },
     paletteSections: "all",
     appSections: ["toolbar", "canvasContainer", "statusBar", "modals", "palette"],
@@ -88,8 +120,13 @@ async function mountPearTree(args, theme) {
 
   unsubscribeSelection = controller.onSelectionChanged((tips) => {
     const names = normaliseTips(tips);
-    selectedTipsKey = JSON.stringify(names);
-    setComponentValue({ tips: names });
+    const key = tipsKey(names);
+    // Do not echo Python's programmatic selection back to Streamlit. That
+    // creates a rerun loop when the component iframe is rebuilt.
+    if (key === selectedTipsKey) return;
+    selectedTipsKey = key;
+    currentTips = names;
+    reportValue(names);
   });
 
   const requested = normaliseTips(args.selectedTips);
@@ -99,6 +136,7 @@ async function mountPearTree(args, theme) {
   });
   // Inline Newick can finish loading before onTreeLoad is registered.
   window.setTimeout(() => applySelection(requested), 0);
+  startSettingsWatcher();
 }
 
 window.addEventListener("message", async event => {
@@ -113,6 +151,13 @@ window.addEventListener("message", async event => {
       await mountPearTree(args, theme);
     } else {
       applySelection(args.selectedTips);
+      if (args.settings && typeof args.settings === "object") {
+        const incomingKey = JSON.stringify(args.settings);
+        if (incomingKey !== settingsKey) {
+          controller.applySettings(args.settings);
+          settingsKey = JSON.stringify(getSettings());
+        }
+      }
     }
   } catch (error) {
     showError(error);

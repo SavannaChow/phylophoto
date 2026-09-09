@@ -12,6 +12,7 @@ A small, local-only Streamlit app for browsing a Newick phylogeny and the sample
 - Lets you choose the local photo root with a macOS folder picker. If it is empty, the app previews and creates one full-name folder for every named tree tip and copies the loaded tree file into that root after confirmation.
 - Uses an independently scrollable photo panel and a draggable center divider.
 - Matches tip-derived prefixes to photo folders and shows all supported images recursively.
+- Can save PearTree display options and folder-matching choices as `phylogeny_photo_preferences.json` inside the selected photo root, then reload them automatically next time that folder is chosen.
 - Shows missing and ambiguous folder matches in a warning table.
 - Optionally displays CSV metadata rows for the selected tip(s).
 

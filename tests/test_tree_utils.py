@@ -8,11 +8,14 @@ from tree_utils import (
     descendant_tip_names,
     folder_is_effectively_empty,
     initialise_photo_library,
+    load_photo_preferences,
     match_photo_folders,
     parse_newick,
     prefix_key,
+    photo_files,
     photo_folder_labels,
     root_tree,
+    save_photo_preferences,
     tree_to_newick,
 )
 
@@ -96,3 +99,24 @@ def test_photo_library_creation_rejects_nonempty_or_unsafe_targets(tmp_path: Pat
         initialise_photo_library(tmp_path, ["S1_safe"], "tree.nwk", b"(S1);")
     with pytest.raises(ValueError, match="safely"):
         photo_folder_labels(["S1/unsafe"], pattern="")
+
+
+def test_photo_preferences_round_trip_in_library_folder(tmp_path: Path):
+    preferences = {
+        "folder_matching": {"rule": "Full tip label", "case_sensitive": False},
+        "peartree": {"tipLabelFontSize": 13, "branchLabelAnnotation": "bootstrap"},
+    }
+    saved_path = save_photo_preferences(tmp_path, preferences)
+    assert saved_path.parent == tmp_path
+    assert load_photo_preferences(tmp_path) == preferences
+    assert folder_is_effectively_empty(tmp_path)
+
+
+def test_photo_files_still_finds_supported_images_recursively(tmp_path: Path):
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    image = nested / "sample.JPG"
+    image.write_bytes(b"test image bytes")
+    (nested / "notes.txt").write_text("not a photo", encoding="utf-8")
+
+    assert photo_files(tmp_path) == [image]

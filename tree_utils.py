@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import io
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,7 +15,8 @@ from Bio.Phylo.BaseTree import Clade, Tree
 
 
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".bmp"}
-IGNORED_EMPTY_FOLDER_ENTRIES = {".DS_Store"}
+PREFERENCES_FILENAME = "phylogeny_photo_preferences.json"
+IGNORED_EMPTY_FOLDER_ENTRIES = {".DS_Store", PREFERENCES_FILENAME}
 
 
 @dataclass(frozen=True)
@@ -227,6 +229,39 @@ def initialise_photo_library(
             tree_copy.unlink()
         raise
     return len(names), tree_copy
+
+
+def load_photo_preferences(photo_root: Path) -> dict[str, object]:
+    """Load this photo library's saved browser preferences, if present."""
+    preferences_path = photo_root / PREFERENCES_FILENAME
+    if not preferences_path.exists():
+        return {}
+    try:
+        value = json.loads(preferences_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not read {PREFERENCES_FILENAME}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"{PREFERENCES_FILENAME} must contain a JSON object.")
+    return value
+
+
+def save_photo_preferences(photo_root: Path, preferences: dict[str, object]) -> Path:
+    """Atomically save browser preferences inside a photo library folder."""
+    if not photo_root.exists() or not photo_root.is_dir():
+        raise ValueError("The selected photo root does not exist or is not a directory.")
+    preferences_path = photo_root / PREFERENCES_FILENAME
+    temporary_path = photo_root / f".{PREFERENCES_FILENAME}.tmp"
+    try:
+        temporary_path.write_text(
+            json.dumps(preferences, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary_path.replace(preferences_path)
+    except (OSError, TypeError, ValueError) as exc:
+        if temporary_path.exists():
+            temporary_path.unlink()
+        raise ValueError(f"Could not save {PREFERENCES_FILENAME}: {exc}") from exc
+    return preferences_path
 
 
 def assign_node_ids(tree: Tree) -> tuple[dict[str, Clade], dict[int, str]]:
