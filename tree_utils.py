@@ -16,7 +16,6 @@ from Bio.Phylo.BaseTree import Clade, Tree
 
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".bmp"}
 PREFERENCES_FILENAME = "phylogeny_photo_preferences.json"
-CURRENT_TREE_FILENAME = "peartree_current_tree.nexus"
 IGNORED_EMPTY_FOLDER_ENTRIES = {".DS_Store", PREFERENCES_FILENAME}
 
 
@@ -303,24 +302,6 @@ def save_photo_preferences(photo_root: Path, preferences: dict[str, object]) -> 
             temporary_path.unlink()
         raise ValueError(f"Could not save {PREFERENCES_FILENAME}: {exc}") from exc
     return preferences_path
-
-
-def save_current_peartree(photo_root: Path, content: str) -> Path:
-    """Atomically save PearTree's own NEXUS export inside a photo library."""
-    if not photo_root.exists() or not photo_root.is_dir():
-        raise ValueError("The selected photo root does not exist or is not a directory.")
-    if not content.strip():
-        raise ValueError("PearTree returned an empty tree export.")
-    tree_path = photo_root / CURRENT_TREE_FILENAME
-    temporary_path = photo_root / f".{CURRENT_TREE_FILENAME}.tmp"
-    try:
-        temporary_path.write_text(content, encoding="utf-8")
-        temporary_path.replace(tree_path)
-    except OSError as exc:
-        if temporary_path.exists():
-            temporary_path.unlink()
-        raise ValueError(f"Could not save {CURRENT_TREE_FILENAME}: {exc}") from exc
-    return tree_path
 
 
 def assign_node_ids(tree: Tree) -> tuple[dict[str, Clade], dict[int, str]]:

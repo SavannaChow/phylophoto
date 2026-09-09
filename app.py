@@ -13,7 +13,6 @@ import streamlit.components.v1 as components
 
 from peartree_component import peartree_viewer
 from tree_utils import (
-    CURRENT_TREE_FILENAME,
     equalise_branch_lengths,
     folder_is_effectively_empty,
     initialise_photo_library,
@@ -24,7 +23,6 @@ from tree_utils import (
     photo_files,
     photo_folder_labels,
     proportionalise_branch_lengths,
-    save_current_peartree,
     save_photo_preferences,
     tip_labels,
     tree_to_newick,
@@ -379,16 +377,6 @@ with st.sidebar:
         width="stretch",
         disabled=not preference_root_key or photo_root_is_empty,
     )
-    save_current_requested = st.button(
-        "Save current tree & preferences",
-        width="stretch",
-        disabled=not preference_root_key or photo_root_is_empty or tree_is_cleared,
-    )
-
-if save_current_requested:
-    export_sequence = int(st.session_state.get("peartree_export_sequence", 0)) + 1
-    st.session_state.peartree_export_sequence = export_sequence
-    st.session_state.peartree_export_request = export_sequence
 
 metadata: pd.DataFrame | None = None
 metadata_tip_column: str | None = None
@@ -423,24 +411,6 @@ if photo_root is not None:
 
 viewer_tree_text = peartree_newick
 viewer_tree_filename = tree_source
-tree_state = library_preferences.get("tree_state", {})
-if preference_root_key and isinstance(tree_state, dict):
-    saved_tree_name = tree_state.get("file")
-    if isinstance(saved_tree_name, str) and saved_tree_name:
-        saved_tree_path = photo_root / saved_tree_name
-        try:
-            if saved_tree_path.parent.resolve() != photo_root.resolve():
-                raise ValueError("The saved current-tree path is outside the selected photo folder.")
-            saved_tree_text = saved_tree_path.read_text(encoding="utf-8")
-            saved_tree = parse_tree_text(saved_tree_text, saved_tree_path.name)
-            if set(tip_labels(saved_tree)) != set(tips) or len(tip_labels(saved_tree)) != len(tips):
-                raise ValueError("The saved current tree does not contain the same tips as the loaded tree.")
-            viewer_tree_text = saved_tree_text
-            viewer_tree_filename = saved_tree_path.name
-        except (OSError, ValueError) as exc:
-            with st.sidebar:
-                st.warning(f"Could not restore the saved current tree: {exc}")
-
 current_tree_label = viewer_tree_filename
 if branch_length_mode != "Original":
     try:
@@ -464,7 +434,6 @@ panels_area = st.container()
 with panels_area:
     left_panel, right_panel = st.columns([1.2, 1])
 
-tree_export_result: dict[str, object] | None = None
 with left_panel:
     st.markdown('<div id="phylogeny-tree-panel"></div>', unsafe_allow_html=True)
     if tree_is_cleared:
@@ -476,7 +445,6 @@ with left_panel:
             filename=viewer_tree_filename,
             selected_tips=st.session_state.selected_tip_names,
             settings=st.session_state.get("peartree_settings", {}),
-            export_request=int(st.session_state.get("peartree_export_request", 0)),
             key="peartree-tree",
             height=900,
         )
@@ -489,9 +457,6 @@ with left_panel:
         returned_settings = selection.get("settings", {})
         if isinstance(returned_settings, dict):
             st.session_state.peartree_settings = returned_settings
-        returned_export = selection.get("treeExport")
-        if isinstance(returned_export, dict):
-            tree_export_result = returned_export
 
 with right_panel:
     st.markdown('<div id="sample-photo-panel"></div>', unsafe_allow_html=True)
@@ -555,8 +520,12 @@ elif matches:
         else:
             st.success("Every tip has one matching photo folder.")
 
-def current_preferences(*, saved_tree_file: str | None = None) -> dict[str, object]:
+def current_preferences() -> dict[str, object]:
     preferences = dict(library_preferences)
+    # Older versions stored a PearTree-exported current tree here. Do not
+    # preserve or restore that state: branch displays must always start from
+    # the tree explicitly loaded by the user.
+    preferences.pop("tree_state", None)
     preferences.update({
         "version": 1,
         "folder_matching": {
@@ -570,11 +539,6 @@ def current_preferences(*, saved_tree_file: str | None = None) -> dict[str, obje
         "peartree": st.session_state.get("peartree_settings", {}),
         "tree_display": {"branch_lengths": branch_length_mode},
     })
-    if saved_tree_file is not None:
-        preferences["tree_state"] = {
-            "file": saved_tree_file,
-            "tip_labels": sorted(tips),
-        }
     return preferences
 
 
@@ -587,37 +551,6 @@ if save_preferences_requested and photo_root is not None:
     except ValueError as exc:
         with st.sidebar:
             st.error(str(exc))
-
-if tree_export_result is not None and photo_root is not None:
-    request_id = int(tree_export_result.get("requestId", 0) or 0)
-    if request_id and request_id != st.session_state.get("processed_peartree_export_request"):
-        st.session_state.processed_peartree_export_request = request_id
-        st.session_state.peartree_export_request = 0
-        export_error = tree_export_result.get("error")
-        content = tree_export_result.get("content")
-        try:
-            if export_error:
-                raise ValueError(str(export_error))
-            if not isinstance(content, str):
-                raise ValueError("PearTree did not return tree content.")
-            exported_tree = parse_tree_text(content, CURRENT_TREE_FILENAME)
-            exported_tips = tip_labels(exported_tree)
-            if set(exported_tips) != set(tips) or len(exported_tips) != len(tips):
-                raise ValueError("PearTree's exported tree does not contain the same tips as the loaded tree.")
-            saved_tree_path = save_current_peartree(photo_root, content)
-            preferences = current_preferences(saved_tree_file=saved_tree_path.name)
-            preferences["peartree"] = tree_export_result.get(
-                "settings", st.session_state.get("peartree_settings", {})
-            )
-            saved_preferences_path = save_photo_preferences(photo_root, preferences)
-            st.session_state.loaded_photo_preferences = preferences
-            st.session_state.preferences_saved = (
-                f"Saved {saved_tree_path.name} and {saved_preferences_path.name}."
-            )
-            st.rerun()
-        except ValueError as exc:
-            with st.sidebar:
-                st.error(f"Could not save the current PearTree tree: {exc}")
 
 # Streamlit columns do not include a draggable divider. This local component
 # changes only the widths of the two parent columns.

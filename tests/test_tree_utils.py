@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 
 from tree_utils import (
-    CURRENT_TREE_FILENAME,
     assign_node_ids,
     bootstrap_value,
     descendant_tip_names,
@@ -19,7 +18,6 @@ from tree_utils import (
     photo_folder_labels,
     proportionalise_branch_lengths,
     root_tree,
-    save_current_peartree,
     save_photo_preferences,
     tip_labels,
     tree_to_newick,
@@ -138,14 +136,3 @@ def test_equal_and_proportional_branch_views_do_not_change_topology():
     assert tip_labels(proportional) == tip_labels(tree)
     assert len({proportional.distance(tip) for tip in proportional.get_terminals()}) == 1
     assert tree_to_newick(tree) != tree_to_newick(equal)
-
-
-def test_current_peartree_nexus_round_trip(tmp_path: Path):
-    content = (
-        '#NEXUS\nBEGIN TREES;\n tree TREE1 = [&R] (A:1,B:1);\n'
-        ' [PearTree={"tipLabelFontSize":"13"}]\nEND;\n'
-    )
-    saved = save_current_peartree(tmp_path, content)
-
-    assert saved.name == CURRENT_TREE_FILENAME
-    assert tip_labels(parse_tree_text(saved.read_text(encoding="utf-8"), saved.name)) == ["A", "B"]
