@@ -3,19 +3,25 @@ from pathlib import Path
 import pytest
 
 from tree_utils import (
+    CURRENT_TREE_FILENAME,
     assign_node_ids,
     bootstrap_value,
     descendant_tip_names,
+    equalise_branch_lengths,
     folder_is_effectively_empty,
     initialise_photo_library,
     load_photo_preferences,
     match_photo_folders,
     parse_newick,
+    parse_tree_text,
     prefix_key,
     photo_files,
     photo_folder_labels,
+    proportionalise_branch_lengths,
     root_tree,
+    save_current_peartree,
     save_photo_preferences,
+    tip_labels,
     tree_to_newick,
 )
 
@@ -120,3 +126,26 @@ def test_photo_files_still_finds_supported_images_recursively(tmp_path: Path):
     (nested / "notes.txt").write_text("not a photo", encoding="utf-8")
 
     assert photo_files(tmp_path) == [image]
+
+
+def test_equal_and_proportional_branch_views_do_not_change_topology():
+    tree = parse_newick("((A:0.1,B:0.2):0.3,(C:0.4,(D:0.5,E:0.6):0.7):0.8);")
+    equal = equalise_branch_lengths(tree)
+    proportional = proportionalise_branch_lengths(tree)
+
+    assert tip_labels(equal) == tip_labels(tree)
+    assert {clade.branch_length for clade in equal.find_clades() if clade is not equal.root} == {1.0}
+    assert tip_labels(proportional) == tip_labels(tree)
+    assert len({proportional.distance(tip) for tip in proportional.get_terminals()}) == 1
+    assert tree_to_newick(tree) != tree_to_newick(equal)
+
+
+def test_current_peartree_nexus_round_trip(tmp_path: Path):
+    content = (
+        '#NEXUS\nBEGIN TREES;\n tree TREE1 = [&R] (A:1,B:1);\n'
+        ' [PearTree={"tipLabelFontSize":"13"}]\nEND;\n'
+    )
+    saved = save_current_peartree(tmp_path, content)
+
+    assert saved.name == CURRENT_TREE_FILENAME
+    assert tip_labels(parse_tree_text(saved.read_text(encoding="utf-8"), saved.name)) == ["A", "B"]

@@ -16,6 +16,7 @@ from Bio.Phylo.BaseTree import Clade, Tree
 
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".bmp"}
 PREFERENCES_FILENAME = "phylogeny_photo_preferences.json"
+CURRENT_TREE_FILENAME = "peartree_current_tree.nexus"
 IGNORED_EMPTY_FOLDER_ENTRIES = {".DS_Store", PREFERENCES_FILENAME}
 
 
@@ -58,6 +59,23 @@ def parse_newick(text: str) -> Tree:
     return tree
 
 
+def parse_tree_text(text: str, filename: str) -> Tree:
+    """Parse one Newick or NEXUS tree using the filename as a format hint."""
+    suffix = Path(filename).suffix.lower()
+    if suffix in {".nex", ".nexus"}:
+        try:
+            tree = Phylo.read(io.StringIO(text), "nexus")
+        except Exception as exc:
+            raise ValueError(f"Could not parse the saved NEXUS tree: {exc}") from exc
+        names = [tip.name for tip in tree.get_terminals()]
+        if not names or any(not name for name in names):
+            raise ValueError("The saved NEXUS tree has missing tip labels.")
+        if len(names) != len(set(names)):
+            raise ValueError("The saved NEXUS tree has duplicate tip labels.")
+        return tree
+    return parse_newick(text)
+
+
 def tip_labels(tree: Tree) -> list[str]:
     return [tip.name for tip in tree.get_terminals()]
 
@@ -67,6 +85,29 @@ def tree_to_newick(tree: Tree) -> str:
     output = io.StringIO()
     Phylo.write(tree, output, "newick")
     return output.getvalue().strip()
+
+
+def equalise_branch_lengths(tree: Tree, length: float = 1.0) -> Tree:
+    """Return a copy whose non-root edges all have the same display length."""
+    equalised = copy.deepcopy(tree)
+    equalised.root.branch_length = 0.0
+    for clade in equalised.find_clades(order="level"):
+        if clade is not equalised.root:
+            clade.branch_length = length
+    return equalised
+
+
+def proportionalise_branch_lengths(tree: Tree) -> Tree:
+    """Return a FigTree-style topology view scaled by descendant tip counts."""
+    transformed = copy.deepcopy(tree)
+    heights: dict[int, float] = {}
+    for clade in transformed.find_clades(order="postorder"):
+        heights[id(clade)] = float(len(clade.get_terminals()) - 1)
+    transformed.root.branch_length = 0.0
+    for parent in transformed.find_clades(order="level"):
+        for child in parent.clades:
+            child.branch_length = heights[id(parent)] - heights[id(child)]
+    return transformed
 
 
 def _tips_by_name(tree: Tree) -> dict[str, Clade]:
@@ -262,6 +303,24 @@ def save_photo_preferences(photo_root: Path, preferences: dict[str, object]) -> 
             temporary_path.unlink()
         raise ValueError(f"Could not save {PREFERENCES_FILENAME}: {exc}") from exc
     return preferences_path
+
+
+def save_current_peartree(photo_root: Path, content: str) -> Path:
+    """Atomically save PearTree's own NEXUS export inside a photo library."""
+    if not photo_root.exists() or not photo_root.is_dir():
+        raise ValueError("The selected photo root does not exist or is not a directory.")
+    if not content.strip():
+        raise ValueError("PearTree returned an empty tree export.")
+    tree_path = photo_root / CURRENT_TREE_FILENAME
+    temporary_path = photo_root / f".{CURRENT_TREE_FILENAME}.tmp"
+    try:
+        temporary_path.write_text(content, encoding="utf-8")
+        temporary_path.replace(tree_path)
+    except OSError as exc:
+        if temporary_path.exists():
+            temporary_path.unlink()
+        raise ValueError(f"Could not save {CURRENT_TREE_FILENAME}: {exc}") from exc
+    return tree_path
 
 
 def assign_node_ids(tree: Tree) -> tuple[dict[str, Clade], dict[int, str]]:

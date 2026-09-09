@@ -8,6 +8,8 @@ let selectedTipsKey = "";
 let currentTips = [];
 let settingsPoller = null;
 let settingsKey = "";
+let lastExportRequest = 0;
+let pendingExportRequest = 0;
 
 function postStreamlitMessage(type, extra = {}) {
   window.parent.postMessage({
@@ -44,8 +46,60 @@ function getSettings() {
   return settings && typeof settings === "object" ? settings : {};
 }
 
-function reportValue(names, settings = getSettings()) {
-  setComponentValue({ tips: names, settings });
+function reportValue(names, settings = getSettings(), extra = {}) {
+  setComponentValue({ tips: names, settings, ...extra });
+}
+
+function installExportHandler() {
+  if (typeof window.peartree?.setExportSaveHandler !== "function") return;
+  window.peartree.setExportSaveHandler(payload => {
+    const requestId = pendingExportRequest;
+    pendingExportRequest = 0;
+    reportValue(currentTips, getSettings(), {
+      treeExport: { ...payload, requestId },
+    });
+  });
+}
+
+function exportCurrentTree(requestId, attempt = 0) {
+  if (!controller || !requestId || requestId <= lastExportRequest) return;
+  const exportButton = viewer.querySelector("#btn-export-tree");
+  if ((!exportButton || exportButton.disabled) && attempt < 50) {
+    window.setTimeout(() => exportCurrentTree(requestId, attempt + 1), 100);
+    return;
+  }
+  lastExportRequest = requestId;
+  if (!exportButton || exportButton.disabled) {
+    reportValue(currentTips, getSettings(), {
+      treeExport: { requestId, error: "PearTree's exporter was not ready." },
+    });
+    return;
+  }
+
+  pendingExportRequest = requestId;
+  exportButton.click();
+  const nexus = viewer.querySelector('input[name="exp-format"][value="nexus"]');
+  if (nexus) {
+    nexus.checked = true;
+    nexus.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  const settingsMode = viewer.querySelector("#exp-store-settings-mode");
+  if (settingsMode) settingsMode.value = "all";
+  const fullScope = viewer.querySelector('input[name="exp-scope"][value="full"]');
+  if (fullScope) fullScope.checked = true;
+  const tipLabels = viewer.querySelector("#exp-tip-label-sel");
+  if (tipLabels && [...tipLabels.options].some(option => option.value === "name")) {
+    tipLabels.value = "name";
+  }
+  const downloadButton = viewer.querySelector("#exp-download-btn");
+  if (!downloadButton) {
+    pendingExportRequest = 0;
+    reportValue(currentTips, getSettings(), {
+      treeExport: { requestId, error: "PearTree did not open its export dialog." },
+    });
+    return;
+  }
+  downloadButton.click();
 }
 
 function startSettingsWatcher() {
@@ -118,6 +172,8 @@ async function mountPearTree(args, theme) {
     },
   });
 
+  installExportHandler();
+
   unsubscribeSelection = controller.onSelectionChanged((tips) => {
     const names = normaliseTips(tips);
     const key = tipsKey(names);
@@ -159,6 +215,7 @@ window.addEventListener("message", async event => {
         }
       }
     }
+    exportCurrentTree(Number(args.exportRequest) || 0);
   } catch (error) {
     showError(error);
   }

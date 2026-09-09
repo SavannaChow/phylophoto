@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from pathlib import Path
 import subprocess
 import sys
@@ -12,13 +13,18 @@ import streamlit.components.v1 as components
 
 from peartree_component import peartree_viewer
 from tree_utils import (
+    CURRENT_TREE_FILENAME,
+    equalise_branch_lengths,
     folder_is_effectively_empty,
     initialise_photo_library,
     load_photo_preferences,
     match_photo_folders,
     parse_newick,
+    parse_tree_text,
     photo_files,
     photo_folder_labels,
+    proportionalise_branch_lengths,
+    save_current_peartree,
     save_photo_preferences,
     tip_labels,
     tree_to_newick,
@@ -48,6 +54,25 @@ st.markdown(
         line-height: 1.15;
         padding-top: .3rem;
         padding-bottom: .25rem;
+    }
+    .phylogeny-title {
+        display: flex;
+        align-items: baseline;
+        gap: .65rem;
+        min-width: 0;
+        margin: -.65rem 0 .35rem;
+        font-size: 1.5rem;
+        line-height: 1.15;
+        font-weight: 700;
+    }
+    .phylogeny-title span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: rgba(128, 128, 128, .78);
+        font-size: .85rem;
+        font-weight: 400;
     }
 
     div[data-testid="stHorizontalBlock"]:has(#phylogeny-tree-panel) {
@@ -145,9 +170,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-st.title("Phylogeny photo browser")
-
-
 def read_uploaded_or_default(uploaded_file) -> tuple[str, str]:
     if uploaded_file is not None:
         return uploaded_file.getvalue().decode("utf-8-sig"), uploaded_file.name
@@ -228,6 +250,8 @@ with st.sidebar:
         st.error(st.session_state.folder_picker_error)
     if st.session_state.get("photo_library_created"):
         st.success(st.session_state.pop("photo_library_created"))
+    if st.session_state.get("preferences_saved"):
+        st.success(st.session_state.pop("preferences_saved"))
 
 photo_root: Path | None = Path(photo_root_text).expanduser() if photo_root_text.strip() else None
 photo_root_is_empty = False
@@ -246,6 +270,7 @@ if st.session_state.get("preference_root_key") != preference_root_key:
             loaded_preferences = load_photo_preferences(photo_root)
         except ValueError as exc:
             st.session_state.preference_load_error = str(exc)
+    st.session_state.loaded_photo_preferences = loaded_preferences
     folder_preferences = loaded_preferences.get("folder_matching", {})
     if not isinstance(folder_preferences, dict):
         folder_preferences = {}
@@ -269,10 +294,31 @@ if st.session_state.get("preference_root_key") != preference_root_key:
     st.session_state.folder_match_case_sensitive = bool(folder_preferences.get("case_sensitive", False))
     peartree_preferences = loaded_preferences.get("peartree", {})
     st.session_state.peartree_settings = peartree_preferences if isinstance(peartree_preferences, dict) else {}
+    tree_display_preferences = loaded_preferences.get("tree_display", {})
+    saved_branch_mode = tree_display_preferences.get("branch_lengths") if isinstance(tree_display_preferences, dict) else None
+    st.session_state.branch_length_mode = (
+        saved_branch_mode if saved_branch_mode in {"Original", "Proportional", "Equal"} else "Original"
+    )
+
+library_preferences = st.session_state.get("loaded_photo_preferences", {})
+if not isinstance(library_preferences, dict):
+    library_preferences = {}
 
 with st.sidebar:
     if st.session_state.get("preference_load_error"):
         st.warning(st.session_state.pop("preference_load_error"))
+    st.divider()
+    st.header("Tree display")
+    branch_length_mode = st.radio(
+        "Branch lengths",
+        ["Original", "Proportional", "Equal"],
+        horizontal=True,
+        key="branch_length_mode",
+        help=(
+            "Original keeps the loaded branch lengths. Proportional is a FigTree-style topology view "
+            "scaled by descendant tip count. Equal gives every edge the same display length."
+        ),
+    )
 
 if photo_root_is_empty and photo_root is not None:
     with st.sidebar:
@@ -329,10 +375,20 @@ with st.sidebar:
     )
     case_sensitive = st.checkbox("Case-sensitive matching", key="folder_match_case_sensitive")
     save_preferences_requested = st.button(
-        "Save preferences to this folder",
+        "Save visual options",
         width="stretch",
         disabled=not preference_root_key or photo_root_is_empty,
     )
+    save_current_requested = st.button(
+        "Save current tree & preferences",
+        width="stretch",
+        disabled=not preference_root_key or photo_root_is_empty or tree_is_cleared,
+    )
+
+if save_current_requested:
+    export_sequence = int(st.session_state.get("peartree_export_sequence", 0)) + 1
+    st.session_state.peartree_export_sequence = export_sequence
+    st.session_state.peartree_export_request = export_sequence
 
 metadata: pd.DataFrame | None = None
 metadata_tip_column: str | None = None
@@ -365,10 +421,50 @@ if photo_root is not None:
         except (ValueError, OSError) as exc:
             st.error(f"Could not match photo folders: {exc}")
 
+viewer_tree_text = peartree_newick
+viewer_tree_filename = tree_source
+tree_state = library_preferences.get("tree_state", {})
+if preference_root_key and isinstance(tree_state, dict):
+    saved_tree_name = tree_state.get("file")
+    if isinstance(saved_tree_name, str) and saved_tree_name:
+        saved_tree_path = photo_root / saved_tree_name
+        try:
+            if saved_tree_path.parent.resolve() != photo_root.resolve():
+                raise ValueError("The saved current-tree path is outside the selected photo folder.")
+            saved_tree_text = saved_tree_path.read_text(encoding="utf-8")
+            saved_tree = parse_tree_text(saved_tree_text, saved_tree_path.name)
+            if set(tip_labels(saved_tree)) != set(tips) or len(tip_labels(saved_tree)) != len(tips):
+                raise ValueError("The saved current tree does not contain the same tips as the loaded tree.")
+            viewer_tree_text = saved_tree_text
+            viewer_tree_filename = saved_tree_path.name
+        except (OSError, ValueError) as exc:
+            with st.sidebar:
+                st.warning(f"Could not restore the saved current tree: {exc}")
+
+current_tree_label = viewer_tree_filename
+if branch_length_mode != "Original":
+    try:
+        display_tree = parse_tree_text(viewer_tree_text, viewer_tree_filename)
+        if branch_length_mode == "Equal":
+            display_tree = equalise_branch_lengths(display_tree)
+        else:
+            display_tree = proportionalise_branch_lengths(display_tree)
+        viewer_tree_text = tree_to_newick(display_tree)
+        viewer_tree_filename = f"{Path(viewer_tree_filename).stem}.{branch_length_mode.lower()}.nwk"
+    except ValueError as exc:
+        st.error(f"Could not transform branch lengths: {exc}")
+
+st.markdown(
+    '<div class="phylogeny-title">Phylogeny photo browser'
+    f'<span>{html.escape(current_tree_label)}</span></div>',
+    unsafe_allow_html=True,
+)
+
 panels_area = st.container()
 with panels_area:
     left_panel, right_panel = st.columns([1.2, 1])
 
+tree_export_result: dict[str, object] | None = None
 with left_panel:
     st.markdown('<div id="phylogeny-tree-panel"></div>', unsafe_allow_html=True)
     if tree_is_cleared:
@@ -376,10 +472,11 @@ with left_panel:
         st.info("Tree cleared. Upload a Newick tree in the sidebar to load another tree.")
     else:
         selection = peartree_viewer(
-            peartree_newick,
-            filename=tree_source,
+            viewer_tree_text,
+            filename=viewer_tree_filename,
             selected_tips=st.session_state.selected_tip_names,
             settings=st.session_state.get("peartree_settings", {}),
+            export_request=int(st.session_state.get("peartree_export_request", 0)),
             key="peartree-tree",
             height=900,
         )
@@ -392,6 +489,9 @@ with left_panel:
         returned_settings = selection.get("settings", {})
         if isinstance(returned_settings, dict):
             st.session_state.peartree_settings = returned_settings
+        returned_export = selection.get("treeExport")
+        if isinstance(returned_export, dict):
+            tree_export_result = returned_export
 
 with right_panel:
     st.markdown('<div id="sample-photo-panel"></div>', unsafe_allow_html=True)
@@ -455,8 +555,9 @@ elif matches:
         else:
             st.success("Every tip has one matching photo folder.")
 
-if save_preferences_requested and photo_root is not None:
-    preferences = {
+def current_preferences(*, saved_tree_file: str | None = None) -> dict[str, object]:
+    preferences = dict(library_preferences)
+    preferences.update({
         "version": 1,
         "folder_matching": {
             "rule": rule,
@@ -467,14 +568,56 @@ if save_preferences_requested and photo_root is not None:
             "case_sensitive": case_sensitive,
         },
         "peartree": st.session_state.get("peartree_settings", {}),
-    }
+        "tree_display": {"branch_lengths": branch_length_mode},
+    })
+    if saved_tree_file is not None:
+        preferences["tree_state"] = {
+            "file": saved_tree_file,
+            "tip_labels": sorted(tips),
+        }
+    return preferences
+
+
+if save_preferences_requested and photo_root is not None:
     try:
-        saved_preferences_path = save_photo_preferences(photo_root, preferences)
-        with st.sidebar:
-            st.success(f"Saved {saved_preferences_path.name}")
+        saved_preferences_path = save_photo_preferences(photo_root, current_preferences())
+        st.session_state.loaded_photo_preferences = current_preferences()
+        st.session_state.preferences_saved = f"Saved visual options to {saved_preferences_path.name}."
+        st.rerun()
     except ValueError as exc:
         with st.sidebar:
             st.error(str(exc))
+
+if tree_export_result is not None and photo_root is not None:
+    request_id = int(tree_export_result.get("requestId", 0) or 0)
+    if request_id and request_id != st.session_state.get("processed_peartree_export_request"):
+        st.session_state.processed_peartree_export_request = request_id
+        st.session_state.peartree_export_request = 0
+        export_error = tree_export_result.get("error")
+        content = tree_export_result.get("content")
+        try:
+            if export_error:
+                raise ValueError(str(export_error))
+            if not isinstance(content, str):
+                raise ValueError("PearTree did not return tree content.")
+            exported_tree = parse_tree_text(content, CURRENT_TREE_FILENAME)
+            exported_tips = tip_labels(exported_tree)
+            if set(exported_tips) != set(tips) or len(exported_tips) != len(tips):
+                raise ValueError("PearTree's exported tree does not contain the same tips as the loaded tree.")
+            saved_tree_path = save_current_peartree(photo_root, content)
+            preferences = current_preferences(saved_tree_file=saved_tree_path.name)
+            preferences["peartree"] = tree_export_result.get(
+                "settings", st.session_state.get("peartree_settings", {})
+            )
+            saved_preferences_path = save_photo_preferences(photo_root, preferences)
+            st.session_state.loaded_photo_preferences = preferences
+            st.session_state.preferences_saved = (
+                f"Saved {saved_tree_path.name} and {saved_preferences_path.name}."
+            )
+            st.rerun()
+        except ValueError as exc:
+            with st.sidebar:
+                st.error(f"Could not save the current PearTree tree: {exc}")
 
 # Streamlit columns do not include a draggable divider. This local component
 # changes only the widths of the two parent columns.
