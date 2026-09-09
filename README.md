@@ -1,20 +1,19 @@
 # Phylogeny photo browser
 
-A small, local-only Streamlit app for browsing a Newick or NEXUS phylogeny and the sample photos associated with its tips. This branch embeds the official PearTree viewer locally.
+A small, local-only Streamlit app for browsing a Newick phylogeny and the sample photos associated with its tips. This branch embeds the official PearTree viewer locally.
 
 ## Features
 
-- Parses Newick or NEXUS trees and extracts all uniquely named tips.
+- Parses Newick trees and extracts all uniquely named tips.
 - Uses PearTree's native tree display, visual-options palette, search, zoom, fit, ordering, rotation, subtree, colour, filtering, and bootstrap controls.
 - Uses PearTree's native reroot, midpoint-root, and temporal-root tools instead of a second set of Streamlit tree controls.
 - Clicking a PearTree tip or internal node sends its selected/descendant tip names to the photo panel.
-- Provides a local **Clear current tree** control; upload a Newick or NEXUS file to load the next tree.
+- Provides a local **Clear current tree** control; upload a Newick file to load the next tree.
 - Lets you choose the local photo root with a macOS folder picker. If it is empty, the app previews and creates one full-name folder for every named tree tip and copies the loaded tree file into that root after confirmation.
 - Uses an independently scrollable photo panel and a draggable center divider.
 - Matches tip-derived prefixes to photo folders and shows all supported images recursively.
 - Can save PearTree display options and folder-matching choices as `phylogeny_photo_preferences.json` inside the selected photo root, then reload them automatically next time that folder is chosen.
 - Can save PearTree's current rooted topology as `peartree_current_tree.nexus` together with its visual options, then restore both from that photo root.
-- Includes a collapsed, searchable outgroup panel below the tree/photo panels; selected tips are passed to PearTree and PearTree performs the reroot itself.
 - Offers `Original`, FigTree-style `Proportional`, and `Equal` branch-length views without changing tip labels or photo matching.
 - Shows missing and ambiguous folder matches in a warning table.
 - Optionally displays CSV metadata rows for the selected tip(s).

@@ -15,7 +15,6 @@ from Bio.Phylo.BaseTree import Clade, Tree
 
 
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".bmp"}
-TREE_FILE_EXTENSIONS = {".nwk", ".newick", ".tree", ".tre", ".nex", ".nexus"}
 PREFERENCES_FILENAME = "phylogeny_photo_preferences.json"
 CURRENT_TREE_FILENAME = "peartree_current_tree.nexus"
 IGNORED_EMPTY_FOLDER_ENTRIES = {".DS_Store", PREFERENCES_FILENAME}
@@ -63,7 +62,7 @@ def parse_newick(text: str) -> Tree:
 def parse_tree_text(text: str, filename: str) -> Tree:
     """Parse one Newick or NEXUS tree using the filename as a format hint."""
     suffix = Path(filename).suffix.lower()
-    if suffix in {".nex", ".nexus"} or text.lstrip().upper().startswith("#NEXUS"):
+    if suffix in {".nex", ".nexus"}:
         try:
             tree = Phylo.read(io.StringIO(text), "nexus")
         except Exception as exc:
@@ -75,13 +74,6 @@ def parse_tree_text(text: str, filename: str) -> Tree:
             raise ValueError("The saved NEXUS tree has duplicate tip labels.")
         return tree
     return parse_newick(text)
-
-
-def make_peartree_rerootable(text: str) -> str:
-    """Keep a NEXUS topology but let PearTree's native reroot controls remain active."""
-    if not text.lstrip().upper().startswith("#NEXUS"):
-        return text
-    return re.sub(r"\[\s*&R\s*\]", "[&U]", text, count=1, flags=re.IGNORECASE)
 
 
 def tip_labels(tree: Tree) -> list[str]:
@@ -218,14 +210,8 @@ def photo_files(folder: Path) -> list[Path]:
 
 
 def folder_is_effectively_empty(folder: Path) -> bool:
-    """Return true when a folder has no sample folders or non-tree user files."""
-    for path in folder.iterdir():
-        if path.name in IGNORED_EMPTY_FOLDER_ENTRIES:
-            continue
-        if path.is_file() and path.suffix.lower() in TREE_FILE_EXTENSIONS:
-            continue
-        return False
-    return True
+    """Return true when a folder contains no user files or folders."""
+    return not any(path.name not in IGNORED_EMPTY_FOLDER_ENTRIES for path in folder.iterdir())
 
 
 def photo_folder_labels(tips: Iterable[str], pattern: str = "") -> list[str]:
@@ -269,21 +255,10 @@ def initialise_photo_library(
     if safe_tree_name.casefold() in set(casefolded):
         raise ValueError("The tree filename conflicts with a sample folder name.")
     tree_copy = photo_root / safe_tree_name
-    if tree_copy.exists() and tree_copy.read_bytes() != tree_bytes:
-        index = 2
-        while True:
-            candidate = photo_root / f"{tree_copy.stem}_{index}{tree_copy.suffix}"
-            if not candidate.exists():
-                tree_copy = candidate
-                break
-            index += 1
 
     created_folders: list[Path] = []
-    created_tree_copy = False
     try:
-        if not tree_copy.exists():
-            tree_copy.write_bytes(tree_bytes)
-            created_tree_copy = True
+        tree_copy.write_bytes(tree_bytes)
         for name in names:
             folder = photo_root / name
             folder.mkdir()
@@ -291,7 +266,7 @@ def initialise_photo_library(
     except OSError:
         for folder in reversed(created_folders):
             folder.rmdir()
-        if created_tree_copy and tree_copy.exists():
+        if tree_copy.exists():
             tree_copy.unlink()
         raise
     return len(names), tree_copy

@@ -22,7 +22,6 @@ def peartree_viewer(
     selected_tips: Iterable[str] = (),
     settings: Mapping[str, object] | None = None,
     export_request: int = 0,
-    root_request: Mapping[str, object] | None = None,
     key: str = "peartree-viewer",
     height: int = 700,
 ) -> dict[str, object]:
@@ -35,7 +34,6 @@ def peartree_viewer(
         selectedTips=names,
         settings=saved_settings,
         exportRequest=export_request,
-        rootRequest=dict(root_request or {}),
         key=key,
         default={"tips": names, "settings": saved_settings},
         height=height,

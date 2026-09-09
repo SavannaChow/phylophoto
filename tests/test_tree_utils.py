@@ -11,7 +11,6 @@ from tree_utils import (
     folder_is_effectively_empty,
     initialise_photo_library,
     load_photo_preferences,
-    make_peartree_rerootable,
     match_photo_folders,
     parse_newick,
     parse_tree_text,
@@ -108,24 +107,6 @@ def test_photo_library_creation_rejects_nonempty_or_unsafe_targets(tmp_path: Pat
         photo_folder_labels(["S1/unsafe"], pattern="")
 
 
-def test_photo_library_can_be_initialised_when_it_only_contains_tree_files(tmp_path: Path):
-    existing_tree = tmp_path / "analysis.nexus"
-    existing_tree.write_text("original nexus", encoding="utf-8")
-    assert folder_is_effectively_empty(tmp_path)
-
-    count, copied_tree = initialise_photo_library(
-        tmp_path,
-        ["sample_A", "sample_B"],
-        existing_tree.name,
-        b"different loaded tree",
-    )
-
-    assert count == 2
-    assert existing_tree.read_text(encoding="utf-8") == "original nexus"
-    assert copied_tree.name == "analysis_2.nexus"
-    assert copied_tree.read_bytes() == b"different loaded tree"
-
-
 def test_photo_preferences_round_trip_in_library_folder(tmp_path: Path):
     preferences = {
         "folder_matching": {"rule": "Full tip label", "case_sensitive": False},
@@ -168,12 +149,3 @@ def test_current_peartree_nexus_round_trip(tmp_path: Path):
 
     assert saved.name == CURRENT_TREE_FILENAME
     assert tip_labels(parse_tree_text(saved.read_text(encoding="utf-8"), saved.name)) == ["A", "B"]
-
-
-def test_saved_rooted_nexus_remains_rerootable_in_peartree():
-    nexus = "#NEXUS\nBEGIN TREES;\n tree TREE1 = [&R] (A:1,B:1);\nEND;\n"
-    interactive = make_peartree_rerootable(nexus)
-
-    assert "[&R]" not in interactive
-    assert "[&U]" in interactive
-    assert tip_labels(parse_tree_text(interactive, "saved.nexus")) == ["A", "B"]
