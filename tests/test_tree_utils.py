@@ -5,12 +5,12 @@ import pytest
 from tree_utils import (
     assign_node_ids,
     bootstrap_value,
+    create_missing_photo_folders,
     descendant_tip_names,
     equalise_branch_lengths,
-    folder_is_effectively_empty,
-    initialise_photo_library,
     load_photo_preferences,
     match_photo_folders,
+    missing_photo_folder_labels,
     parse_newick,
     parse_tree_text,
     prefix_key,
@@ -85,24 +85,28 @@ def test_folder_matching_and_ambiguity(tmp_path: Path):
     assert matches["C_one"].status == "missing"
 
 
-def test_empty_photo_library_creation_copies_tree_and_full_tip_names(tmp_path: Path):
-    (tmp_path / ".DS_Store").write_bytes(b"")
-    assert folder_is_effectively_empty(tmp_path)
+def test_photo_folder_creation_keeps_existing_tree_and_folders(tmp_path: Path):
+    tree_file = tmp_path / "analysis.tree"
+    tree_file.write_text("(A,B);", encoding="utf-8")
+    (tmp_path / "GCA_123").mkdir()
     labels = photo_folder_labels(["S1_Acropora_sp2", "GCA_123", "Tan44_Acropora_typeD"])
-    count, tree_copy = initialise_photo_library(tmp_path, labels, "new.tree", b"(S1,GCA_123,Tan44);")
-    assert count == 3
-    assert tree_copy.read_bytes() == b"(S1,GCA_123,Tan44);"
+    assert missing_photo_folder_labels(tmp_path, labels) == ["S1_Acropora_sp2", "Tan44_Acropora_typeD"]
+
+    created = create_missing_photo_folders(tmp_path, labels)
+
+    assert [folder.name for folder in created] == ["S1_Acropora_sp2", "Tan44_Acropora_typeD"]
+    assert tree_file.read_text(encoding="utf-8") == "(A,B);"
     assert (tmp_path / "S1_Acropora_sp2").is_dir()
     assert (tmp_path / "GCA_123").is_dir()
     assert (tmp_path / "Tan44_Acropora_typeD").is_dir()
 
 
-def test_photo_library_creation_rejects_nonempty_or_unsafe_targets(tmp_path: Path):
-    (tmp_path / "existing").mkdir()
-    with pytest.raises(ValueError, match="not empty"):
-        initialise_photo_library(tmp_path, ["S1_safe"], "tree.nwk", b"(S1);")
+def test_photo_folder_creation_rejects_unsafe_names_and_file_conflicts(tmp_path: Path):
     with pytest.raises(ValueError, match="safely"):
         photo_folder_labels(["S1/unsafe"], pattern="")
+    (tmp_path / "S1_safe").write_text("not a directory", encoding="utf-8")
+    with pytest.raises(ValueError, match="conflict"):
+        create_missing_photo_folders(tmp_path, ["S1_safe"])
 
 
 def test_photo_preferences_round_trip_in_library_folder(tmp_path: Path):
@@ -113,7 +117,6 @@ def test_photo_preferences_round_trip_in_library_folder(tmp_path: Path):
     saved_path = save_photo_preferences(tmp_path, preferences)
     assert saved_path.parent == tmp_path
     assert load_photo_preferences(tmp_path) == preferences
-    assert folder_is_effectively_empty(tmp_path)
 
 
 def test_photo_files_still_finds_supported_images_recursively(tmp_path: Path):

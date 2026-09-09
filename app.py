@@ -13,11 +13,11 @@ import streamlit.components.v1 as components
 
 from peartree_component import peartree_viewer
 from tree_utils import (
+    create_missing_photo_folders,
     equalise_branch_lengths,
-    folder_is_effectively_empty,
-    initialise_photo_library,
     load_photo_preferences,
     match_photo_folders,
+    missing_photo_folder_labels,
     parse_newick,
     parse_tree_text,
     photo_files,
@@ -221,7 +221,6 @@ except (ValueError, UnicodeDecodeError) as exc:
 
 tips = tip_labels(tree)
 peartree_newick = tree_to_newick(tree)
-tree_bytes = uploaded_tree.getvalue() if uploaded_tree is not None else DEFAULT_TREE.read_bytes()
 
 tree_identity = (tree_source, peartree_newick)
 if st.session_state.get("tree_identity") != tree_identity:
@@ -252,13 +251,6 @@ with st.sidebar:
         st.success(st.session_state.pop("preferences_saved"))
 
 photo_root: Path | None = Path(photo_root_text).expanduser() if photo_root_text.strip() else None
-photo_root_is_empty = False
-if photo_root is not None and photo_root.exists() and photo_root.is_dir():
-    try:
-        photo_root_is_empty = folder_is_effectively_empty(photo_root)
-    except OSError as exc:
-        st.error(f"Could not inspect the selected photo folder: {exc}")
-
 preference_root_key = str(photo_root.resolve()) if photo_root is not None and photo_root.is_dir() else ""
 if st.session_state.get("preference_root_key") != preference_root_key:
     st.session_state.preference_root_key = preference_root_key
@@ -318,30 +310,23 @@ with st.sidebar:
         ),
     )
 
-if photo_root_is_empty and photo_root is not None:
+if preference_root_key and photo_root is not None:
     with st.sidebar:
-        st.warning("This folder is empty. Set it up for the loaded tree?")
         try:
-            folders_to_create = photo_folder_labels(tips)
-            st.caption(f"One full-name folder will be created for each of the {len(folders_to_create)} named tree tips.")
-            with st.expander("Review folder names"):
-                st.dataframe(pd.DataFrame({"folder_name": folders_to_create}), hide_index=True, width="stretch")
-            if st.button(
-                f"Create {len(folders_to_create)} folders + copy tree",
-                type="primary",
-                width="stretch",
-                disabled=not folders_to_create,
-            ):
-                count, tree_copy = initialise_photo_library(
-                    photo_root,
-                    folders_to_create,
-                    tree_source,
-                    tree_bytes,
-                )
-                st.session_state.photo_library_created = (
-                    f"Created {count} node folders and copied the tree as {tree_copy.name}."
-                )
-                st.rerun()
+            required_folders = photo_folder_labels(tips)
+            missing_folders = missing_photo_folder_labels(photo_root, required_folders)
+            if missing_folders:
+                st.warning(f"{len(missing_folders)} node photo folder(s) are missing.")
+                with st.expander("Review folders to create"):
+                    st.dataframe(pd.DataFrame({"folder_name": missing_folders}), hide_index=True, width="stretch")
+                if st.button(
+                    f"Create {len(missing_folders)} missing photo folders",
+                    type="primary",
+                    width="stretch",
+                ):
+                    created = create_missing_photo_folders(photo_root, required_folders)
+                    st.session_state.photo_library_created = f"Created {len(created)} node photo folders."
+                    st.rerun()
         except (ValueError, OSError) as exc:
             st.error(str(exc))
 
@@ -375,7 +360,7 @@ with st.sidebar:
     save_preferences_requested = st.button(
         "Save visual options",
         width="stretch",
-        disabled=not preference_root_key or photo_root_is_empty,
+        disabled=not preference_root_key,
     )
 
 metadata: pd.DataFrame | None = None

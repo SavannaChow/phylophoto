@@ -16,7 +16,6 @@ from Bio.Phylo.BaseTree import Clade, Tree
 
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".bmp"}
 PREFERENCES_FILENAME = "phylogeny_photo_preferences.json"
-IGNORED_EMPTY_FOLDER_ENTRIES = {".DS_Store", PREFERENCES_FILENAME}
 
 
 @dataclass(frozen=True)
@@ -208,11 +207,6 @@ def photo_files(folder: Path) -> list[Path]:
     )
 
 
-def folder_is_effectively_empty(folder: Path) -> bool:
-    """Return true when a folder contains no user files or folders."""
-    return not any(path.name not in IGNORED_EMPTY_FOLDER_ENTRIES for path in folder.iterdir())
-
-
 def photo_folder_labels(tips: Iterable[str], pattern: str = "") -> list[str]:
     """Return full tip labels that should become sample-photo folders."""
     try:
@@ -227,48 +221,41 @@ def photo_folder_labels(tips: Iterable[str], pattern: str = "") -> list[str]:
     return labels
 
 
-def initialise_photo_library(
-    photo_root: Path,
-    folder_names: Iterable[str],
-    tree_filename: str,
-    tree_bytes: bytes,
-) -> tuple[int, Path]:
-    """Populate an empty photo root with sample folders and a tree-file copy."""
+def missing_photo_folder_labels(photo_root: Path, folder_names: Iterable[str]) -> list[str]:
+    """Return full-name photo folders not already present in a photo root."""
     if not photo_root.exists() or not photo_root.is_dir():
         raise ValueError("The selected photo root does not exist or is not a directory.")
-    if not folder_is_effectively_empty(photo_root):
-        raise ValueError("The selected photo root is not empty; no folders were created.")
 
     names = list(dict.fromkeys(folder_names))
     if not names:
         raise ValueError("No tip labels match the folder-creation rule.")
-    # Reuse the same validation used by photo_folder_labels, without filtering.
     photo_folder_labels(names, pattern="")
     casefolded = [name.casefold() for name in names]
     if len(casefolded) != len(set(casefolded)):
         raise ValueError("Some tip labels collide on a case-insensitive filesystem.")
 
-    safe_tree_name = Path(tree_filename).name
-    if not safe_tree_name or safe_tree_name in {".", ".."}:
-        raise ValueError("The tree filename is not safe to copy.")
-    if safe_tree_name.casefold() in set(casefolded):
-        raise ValueError("The tree filename conflicts with a sample folder name.")
-    tree_copy = photo_root / safe_tree_name
+    entries = {path.name.casefold(): path for path in photo_root.iterdir()}
+    conflicts = [name for name in names if name.casefold() in entries and not entries[name.casefold()].is_dir()]
+    if conflicts:
+        raise ValueError("Files conflict with these required photo-folder names: " + ", ".join(conflicts))
+    return [name for name in names if name.casefold() not in entries]
+
+
+def create_missing_photo_folders(photo_root: Path, folder_names: Iterable[str]) -> list[Path]:
+    """Create only missing full-name photo folders; never copy or modify a tree."""
+    missing = missing_photo_folder_labels(photo_root, folder_names)
 
     created_folders: list[Path] = []
     try:
-        tree_copy.write_bytes(tree_bytes)
-        for name in names:
+        for name in missing:
             folder = photo_root / name
             folder.mkdir()
             created_folders.append(folder)
     except OSError:
         for folder in reversed(created_folders):
             folder.rmdir()
-        if tree_copy.exists():
-            tree_copy.unlink()
         raise
-    return len(names), tree_copy
+    return created_folders
 
 
 def load_photo_preferences(photo_root: Path) -> dict[str, object]:
