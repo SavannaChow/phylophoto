@@ -10,6 +10,7 @@ from tree_utils import (
     equalise_branch_lengths,
     load_photo_preferences,
     match_photo_folders,
+    merge_node_annotations,
     missing_photo_folder_labels,
     parse_newick,
     parse_tree_text,
@@ -139,3 +140,11 @@ def test_equal_and_proportional_branch_views_do_not_change_topology():
     assert tip_labels(proportional) == tip_labels(tree)
     assert len({proportional.distance(tip) for tip in proportional.get_terminals()}) == 1
     assert tree_to_newick(tree) != tree_to_newick(equal)
+
+
+def test_node_annotations_merge_without_replacing_branch_lengths():
+    original = parse_newick("((A:2,B:3):4,C:5);")
+    styled = parse_newick("(C:1,(B:1,A[&user_colour=#ff0000]:1)[&user_colour=#00ff00]:1);")
+    merged = merge_node_annotations(original, styled)
+    assert next(t for t in merged.get_terminals() if t.name == "A").comment == "&user_colour=#ff0000"
+    assert sorted(c.branch_length for c in merged.find_clades() if c is not merged.root) == [2, 3, 4, 5]
