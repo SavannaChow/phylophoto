@@ -117,8 +117,6 @@ window.addEventListener("message", async event => {
   } catch (error) {
     showError(error);
   }
-
-  postStreamlitMessage("streamlit:setFrameHeight", { height: window.innerHeight || 700 });
 });
 
 postStreamlitMessage("streamlit:componentReady", { apiVersion: 1 });

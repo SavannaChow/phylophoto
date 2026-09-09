@@ -48,7 +48,8 @@ st.markdown(
         width: auto !important;
         min-width: 360px;
         max-width: calc(75% - 5px);
-        height: 78vh;
+        height: calc(100vh - 5rem);
+        height: calc(100dvh - 5rem);
         min-height: 480px;
         overflow: hidden;
         border: 1px solid rgba(128, 128, 128, .35);
@@ -62,10 +63,12 @@ st.markdown(
         min-height: 0 !important;
         gap: 0 !important;
     }
+    div[data-testid="stHorizontalBlock"]:has(#phylogeny-tree-panel) > div[data-testid="stColumn"]:first-child iframe,
     .phylogeny-left-panel iframe {
         display: block;
         width: 100% !important;
-        height: calc(78vh - 2px) !important;
+        height: calc(100vh - 5rem - 2px) !important;
+        height: calc(100dvh - 5rem - 2px) !important;
         min-height: 478px !important;
         border: 0 !important;
     }
@@ -74,7 +77,8 @@ st.markdown(
         flex: 1 1 auto;
         width: auto !important;
         min-width: 300px;
-        height: 78vh;
+        height: calc(100vh - 5rem);
+        height: calc(100dvh - 5rem);
         min-height: 480px;
         overflow-y: auto;
         overflow-x: hidden;
