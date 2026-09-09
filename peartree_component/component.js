@@ -10,6 +10,7 @@ let settingsPoller = null;
 let settingsKey = "";
 let lastExportRequest = 0;
 let pendingExportRequest = 0;
+let lastRootRequest = 0;
 
 function postStreamlitMessage(type, extra = {}) {
   window.parent.postMessage({
@@ -100,6 +101,44 @@ function exportCurrentTree(requestId, attempt = 0) {
     return;
   }
   downloadButton.click();
+}
+
+function applyRootRequest(request, attempt = 0) {
+  const requestId = Number(request?.requestId) || 0;
+  if (!controller || !requestId || requestId <= lastRootRequest) return;
+
+  const mode = request?.mode;
+  if (mode === "midpoint") {
+    lastRootRequest = requestId;
+    controller.midpointRoot();
+    window.setTimeout(() => {
+      reportValue(currentTips, getSettings(), {
+        rootApplied: { requestId, mode, tips: [] },
+      });
+    }, 150);
+    return;
+  }
+
+  const names = normaliseTips(request?.tips);
+  applySelection(names);
+  const rerootButton = viewer.querySelector("#btn-reroot");
+  if ((!rerootButton || rerootButton.disabled) && attempt < 20) {
+    window.setTimeout(() => applyRootRequest(request, attempt + 1), 50);
+    return;
+  }
+  lastRootRequest = requestId;
+  if (!names.length || !rerootButton || rerootButton.disabled) {
+    reportValue(currentTips, getSettings(), {
+      rootApplied: { requestId, mode, tips: names, error: "PearTree could not reroot on this selection." },
+    });
+    return;
+  }
+  rerootButton.click();
+  window.setTimeout(() => {
+    reportValue(currentTips, getSettings(), {
+      rootApplied: { requestId, mode, tips: names },
+    });
+  }, 150);
 }
 
 function startSettingsWatcher() {
@@ -216,6 +255,7 @@ window.addEventListener("message", async event => {
       }
     }
     exportCurrentTree(Number(args.exportRequest) || 0);
+    applyRootRequest(args.rootRequest || {});
   } catch (error) {
     showError(error);
   }

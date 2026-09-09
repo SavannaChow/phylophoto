@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
 from pathlib import Path
 import subprocess
@@ -18,6 +19,7 @@ from tree_utils import (
     folder_is_effectively_empty,
     initialise_photo_library,
     load_photo_preferences,
+    make_peartree_rerootable,
     match_photo_folders,
     parse_newick,
     parse_tree_text,
@@ -33,6 +35,7 @@ from tree_utils import (
 
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_TREE = APP_DIR / "edge-incomplete-min_taxa_050.charsets.renamed_species_accession_geo_srr_gca_species_updated.tree"
+ROOTING_MODES = ["Original root", "Single outgroup", "Multiple outgroups (MRCA)", "Midpoint root"]
 
 
 st.set_page_config(page_title="Phylogeny photo browser", page_icon="🌿", layout="wide")
@@ -210,22 +213,26 @@ def choose_photo_root() -> None:
 
 with st.sidebar:
     st.header("Inputs")
-    uploaded_tree = st.file_uploader("Newick tree", type=["nwk", "newick", "tree", "tre"])
+    uploaded_tree = st.file_uploader(
+        "Newick or NEXUS tree",
+        type=["nwk", "newick", "tree", "tre", "nex", "nexus"],
+    )
     clear_current_tree = st.button("Clear current tree", width="stretch")
     uploaded_metadata = st.file_uploader("Metadata CSV (optional)", type=["csv"])
 
 try:
     newick_text, tree_source = read_uploaded_or_default(uploaded_tree)
-    tree = parse_newick(newick_text)
+    tree = parse_tree_text(newick_text, tree_source)
 except (ValueError, UnicodeDecodeError) as exc:
     st.error(str(exc))
     st.stop()
 
 tips = tip_labels(tree)
-peartree_newick = tree_to_newick(tree)
+peartree_source_text = newick_text.strip()
+source_tree_sha256 = hashlib.sha256(peartree_source_text.encode("utf-8")).hexdigest()
 tree_bytes = uploaded_tree.getvalue() if uploaded_tree is not None else DEFAULT_TREE.read_bytes()
 
-tree_identity = (tree_source, peartree_newick)
+tree_identity = (tree_source, peartree_source_text)
 if st.session_state.get("tree_identity") != tree_identity:
     st.session_state.tree_identity = tree_identity
     st.session_state.selected_tip_names = [tips[0]]
@@ -264,6 +271,7 @@ if photo_root is not None and photo_root.exists() and photo_root.is_dir():
 preference_root_key = str(photo_root.resolve()) if photo_root is not None and photo_root.is_dir() else ""
 if st.session_state.get("preference_root_key") != preference_root_key:
     st.session_state.preference_root_key = preference_root_key
+    st.session_state.ignore_saved_tree = False
     loaded_preferences: dict[str, object] = {}
     if preference_root_key:
         try:
@@ -271,6 +279,10 @@ if st.session_state.get("preference_root_key") != preference_root_key:
         except ValueError as exc:
             st.session_state.preference_load_error = str(exc)
     st.session_state.loaded_photo_preferences = loaded_preferences
+    loaded_tree_state = loaded_preferences.get("tree_state", {})
+    saved_source_sha256 = loaded_tree_state.get("source_sha256") if isinstance(loaded_tree_state, dict) else None
+    tree_preferences_match_source = uploaded_tree is None or saved_source_sha256 == source_tree_sha256
+    st.session_state.tree_preferences_match_source = tree_preferences_match_source
     folder_preferences = loaded_preferences.get("folder_matching", {})
     if not isinstance(folder_preferences, dict):
         folder_preferences = {}
@@ -292,13 +304,28 @@ if st.session_state.get("preference_root_key") != preference_root_key:
         saved_match_mode if saved_match_mode in {"Equals key", "Starts with key"} else "Equals key"
     )
     st.session_state.folder_match_case_sensitive = bool(folder_preferences.get("case_sensitive", False))
-    peartree_preferences = loaded_preferences.get("peartree", {})
+    peartree_preferences = loaded_preferences.get("peartree", {}) if tree_preferences_match_source else {}
     st.session_state.peartree_settings = peartree_preferences if isinstance(peartree_preferences, dict) else {}
-    tree_display_preferences = loaded_preferences.get("tree_display", {})
+    tree_display_preferences = loaded_preferences.get("tree_display", {}) if tree_preferences_match_source else {}
     saved_branch_mode = tree_display_preferences.get("branch_lengths") if isinstance(tree_display_preferences, dict) else None
     st.session_state.branch_length_mode = (
         saved_branch_mode if saved_branch_mode in {"Original", "Proportional", "Equal"} else "Original"
     )
+    rooting_preferences = loaded_preferences.get("rooting", {}) if tree_preferences_match_source else {}
+    if not isinstance(rooting_preferences, dict):
+        rooting_preferences = {}
+    saved_rooting_mode = rooting_preferences.get("mode")
+    st.session_state.rooting_mode = saved_rooting_mode if saved_rooting_mode in ROOTING_MODES else ROOTING_MODES[0]
+    saved_outgroups = rooting_preferences.get("outgroups", [])
+    if not isinstance(saved_outgroups, list):
+        saved_outgroups = []
+    valid_outgroups = [name for name in saved_outgroups if isinstance(name, str) and name in tips]
+    st.session_state.single_outgroup = valid_outgroups[0] if valid_outgroups else tips[0]
+    st.session_state.multiple_outgroups = valid_outgroups
+    st.session_state.applied_rooting_preferences = {
+        "mode": st.session_state.rooting_mode,
+        "outgroups": valid_outgroups,
+    }
 
 library_preferences = st.session_state.get("loaded_photo_preferences", {})
 if not isinstance(library_preferences, dict):
@@ -421,10 +448,15 @@ if photo_root is not None:
         except (ValueError, OSError) as exc:
             st.error(f"Could not match photo folders: {exc}")
 
-viewer_tree_text = peartree_newick
+viewer_tree_text = peartree_source_text
 viewer_tree_filename = tree_source
 tree_state = library_preferences.get("tree_state", {})
-if preference_root_key and isinstance(tree_state, dict):
+if (
+    preference_root_key
+    and st.session_state.get("tree_preferences_match_source", uploaded_tree is None)
+    and not st.session_state.get("ignore_saved_tree", False)
+    and isinstance(tree_state, dict)
+):
     saved_tree_name = tree_state.get("file")
     if isinstance(saved_tree_name, str) and saved_tree_name:
         saved_tree_path = photo_root / saved_tree_name
@@ -454,6 +486,8 @@ if branch_length_mode != "Original":
     except ValueError as exc:
         st.error(f"Could not transform branch lengths: {exc}")
 
+viewer_tree_text = make_peartree_rerootable(viewer_tree_text)
+
 st.markdown(
     '<div class="phylogeny-title">Phylogeny photo browser'
     f'<span>{html.escape(current_tree_label)}</span></div>',
@@ -465,6 +499,7 @@ with panels_area:
     left_panel, right_panel = st.columns([1.2, 1])
 
 tree_export_result: dict[str, object] | None = None
+root_apply_result: dict[str, object] | None = None
 with left_panel:
     st.markdown('<div id="phylogeny-tree-panel"></div>', unsafe_allow_html=True)
     if tree_is_cleared:
@@ -477,6 +512,7 @@ with left_panel:
             selected_tips=st.session_state.selected_tip_names,
             settings=st.session_state.get("peartree_settings", {}),
             export_request=int(st.session_state.get("peartree_export_request", 0)),
+            root_request=st.session_state.get("peartree_root_request", {}),
             key="peartree-tree",
             height=900,
         )
@@ -492,6 +528,23 @@ with left_panel:
         returned_export = selection.get("treeExport")
         if isinstance(returned_export, dict):
             tree_export_result = returned_export
+        returned_root = selection.get("rootApplied")
+        if isinstance(returned_root, dict):
+            root_apply_result = returned_root
+
+if root_apply_result is not None:
+    request_id = int(root_apply_result.get("requestId", 0) or 0)
+    if request_id and request_id != st.session_state.get("processed_peartree_root_request"):
+        st.session_state.processed_peartree_root_request = request_id
+        st.session_state.peartree_root_request = {}
+        if root_apply_result.get("error"):
+            st.session_state.rooting_apply_error = str(root_apply_result["error"])
+        else:
+            pending_rooting = st.session_state.get("pending_rooting_preferences")
+            if isinstance(pending_rooting, dict):
+                st.session_state.applied_rooting_preferences = pending_rooting
+            st.session_state.rooting_apply_message = "PearTree applied the selected root. Save the current tree to keep it."
+        st.session_state.pending_rooting_preferences = {}
 
 with right_panel:
     st.markdown('<div id="sample-photo-panel"></div>', unsafe_allow_html=True)
@@ -555,6 +608,71 @@ elif matches:
         else:
             st.success("Every tip has one matching photo folder.")
 
+with st.expander("Rooting / outgroup", expanded=False):
+    rooting_mode = st.selectbox("Rooting mode", ROOTING_MODES, key="rooting_mode")
+    requested_outgroups: list[str] = []
+    if rooting_mode == "Single outgroup":
+        requested_outgroups = [
+            st.selectbox(
+                "Outgroup tip — type to search",
+                tips,
+                key="single_outgroup",
+            )
+        ]
+    elif rooting_mode == "Multiple outgroups (MRCA)":
+        requested_outgroups = st.multiselect(
+            "Outgroup tips — type to search",
+            tips,
+            key="multiple_outgroups",
+        )
+        if len(requested_outgroups) >= 2:
+            try:
+                topology_tree = parse_tree_text(viewer_tree_text, viewer_tree_filename)
+                topology_tips = {tip.name: tip for tip in topology_tree.get_terminals()}
+                mrca = topology_tree.common_ancestor(*(topology_tips[name] for name in requested_outgroups))
+                mrca_descendants = [tip.name for tip in mrca.get_terminals()]
+                unexpected = [name for name in mrca_descendants if name not in requested_outgroups]
+                if unexpected:
+                    st.warning(
+                        f"The MRCA also contains {len(unexpected)} unselected descendant tip(s). "
+                        "PearTree will root on this complete MRCA clade."
+                    )
+                    st.dataframe(pd.DataFrame({"additional_MRCA_tip": unexpected}), hide_index=True, width="stretch")
+                else:
+                    st.caption("The selected outgroups form a monophyletic clade in the currently loaded topology.")
+            except (KeyError, ValueError) as exc:
+                st.error(f"Could not inspect the selected outgroup MRCA: {exc}")
+
+    apply_root_disabled = tree_is_cleared or (
+        rooting_mode == "Multiple outgroups (MRCA)" and len(requested_outgroups) < 2
+    )
+    if st.button("Apply root in PearTree", disabled=apply_root_disabled):
+        if rooting_mode == "Original root":
+            st.session_state.ignore_saved_tree = True
+            st.session_state.applied_rooting_preferences = {"mode": rooting_mode, "outgroups": []}
+            st.session_state.rooting_apply_message = (
+                "Restored the root from the originally loaded tree. Save the current tree to keep it."
+            )
+            st.rerun()
+        else:
+            root_sequence = int(st.session_state.get("peartree_root_sequence", 0)) + 1
+            st.session_state.peartree_root_sequence = root_sequence
+            st.session_state.peartree_root_request = {
+                "requestId": root_sequence,
+                "mode": "midpoint" if rooting_mode == "Midpoint root" else "selection",
+                "tips": requested_outgroups,
+            }
+            st.session_state.pending_rooting_preferences = {
+                "mode": rooting_mode,
+                "outgroups": requested_outgroups,
+            }
+            st.rerun()
+
+    if st.session_state.get("rooting_apply_error"):
+        st.error(st.session_state.pop("rooting_apply_error"))
+    if st.session_state.get("rooting_apply_message"):
+        st.success(st.session_state.pop("rooting_apply_message"))
+
 def current_preferences(*, saved_tree_file: str | None = None) -> dict[str, object]:
     preferences = dict(library_preferences)
     preferences.update({
@@ -574,7 +692,11 @@ def current_preferences(*, saved_tree_file: str | None = None) -> dict[str, obje
         preferences["tree_state"] = {
             "file": saved_tree_file,
             "tip_labels": sorted(tips),
+            "source_filename": tree_source,
+            "source_sha256": source_tree_sha256,
         }
+        applied_rooting = st.session_state.get("applied_rooting_preferences", {})
+        preferences["rooting"] = applied_rooting if isinstance(applied_rooting, dict) else {}
     return preferences
 
 
@@ -611,6 +733,8 @@ if tree_export_result is not None and photo_root is not None:
             )
             saved_preferences_path = save_photo_preferences(photo_root, preferences)
             st.session_state.loaded_photo_preferences = preferences
+            st.session_state.tree_preferences_match_source = True
+            st.session_state.ignore_saved_tree = False
             st.session_state.preferences_saved = (
                 f"Saved {saved_tree_path.name} and {saved_preferences_path.name}."
             )
