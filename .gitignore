@@ -1,0 +1,8 @@
+.DS_Store
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# User-supplied sample photos stay local and are never committed.
+sample_photos/
