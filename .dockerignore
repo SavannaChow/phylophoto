@@ -1,0 +1,10 @@
+.git
+.gitignore
+.venv
+.pytest_cache
+__pycache__
+*.py[cod]
+.DS_Store
+sample_photos
+tests
+Start Phylogeny Photo Browser.command

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -30,6 +31,7 @@ from tree_utils import (
 
 APP_DIR = Path(__file__).resolve().parent
 ROOTING_MODES = ["Original root", "Single outgroup", "Multiple outgroups (MRCA)", "Midpoint root"]
+DEFAULT_PHOTO_ROOT = os.environ.get("UCE_PHOTO_ROOT", "")
 
 
 st.set_page_config(page_title="Phylogeny photo browser", page_icon="🌿", layout="wide")
@@ -240,7 +242,7 @@ if st.session_state.get("tree_identity") != tree_identity:
     st.session_state.tree_identity = tree_identity
     st.session_state.selected_tip_names = [tips[0]]
     st.session_state.tree_is_cleared = False
-    st.session_state.photo_root_input = ""
+    st.session_state.photo_root_input = DEFAULT_PHOTO_ROOT
     st.session_state.rooting_mode = ROOTING_MODES[0]
     st.session_state.single_outgroup = tips[0]
     st.session_state.multiple_outgroups = []
@@ -258,7 +260,10 @@ with st.sidebar:
         key="photo_root_input",
         placeholder="Choose or enter a local folder",
     )
-    st.button("Choose folder…", on_click=choose_photo_root, width="stretch")
+    if sys.platform == "darwin":
+        st.button("Choose folder…", on_click=choose_photo_root, width="stretch")
+    else:
+        st.caption("Server photo path (Docker default: /data/photos)")
     if st.session_state.get("folder_picker_error"):
         st.error(st.session_state.folder_picker_error)
     if st.session_state.get("photo_library_created"):

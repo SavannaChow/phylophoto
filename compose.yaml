@@ -1,0 +1,14 @@
+services:
+  phylogeny-photo-browser:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: phylogeny-photo-browser
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      UCE_PHOTO_ROOT: /data/photos
+    volumes:
+      # Change the left side if your Synology photo path is different.
+      - /volume1/docker/uce-photo-data/photos:/data/photos

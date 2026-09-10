@@ -64,3 +64,73 @@ Upload a CSV and choose the column containing the exact tree tip labels. When a 
 ```bash
 pytest -q
 ```
+
+## Synology Docker deployment
+
+The container listens on port `8501`. The default Compose file maps the Synology folder
+`/volume1/docker/uce-photo-data/photos` to `/data/photos` inside the container. Edit only the left side of that volume mapping if your NAS folder is elsewhere. The photo library must be writable by Container Manager because the app can create missing tip folders and save `phylogeny_photo_preferences.json`.
+
+### 1. Publish from VS Code to GitHub
+
+Create an empty GitHub repository named `UCE-photo` (do not add a README or `.gitignore` there). In the VS Code terminal, from this project folder, run:
+
+```bash
+git status
+git remote add origin https://github.com/YOUR_GITHUB_NAME/UCE-photo.git
+git push -u origin peartree
+```
+
+If `origin` already exists, replace the second command with:
+
+```bash
+git remote set-url origin https://github.com/YOUR_GITHUB_NAME/UCE-photo.git
+```
+
+For later updates:
+
+```bash
+git push origin peartree
+```
+
+VS Code GUI alternative: open **Source Control**, commit any pending changes, open the Command Palette, choose **GitHub: Publish to GitHub**, select the repository visibility, and publish the `peartree` branch. A private repository requires a GitHub SSH key or personal access token when the Synology clones or pulls it; a public repository is simplest for read-only deployment.
+
+### 2. Build on Synology
+
+Enable SSH temporarily in DSM, connect to the NAS, and run (replace the GitHub name and NAS paths as needed):
+
+```bash
+mkdir -p /volume1/docker/uce-photo-data/photos
+cd /volume1/docker
+git clone --branch peartree https://github.com/YOUR_GITHUB_NAME/UCE-photo.git uce-photo-app
+cd uce-photo-app
+docker compose up -d --build
+docker compose ps
+```
+
+On older DSM installations where the Compose command is named `docker-compose`, use `docker-compose` in place of `docker compose` in the commands above.
+
+Open:
+
+```text
+http://SYNOLOGY_IP:8501
+```
+
+In DSM Container Manager you can instead create a **Project** from the checked-out `uce-photo-app/compose.yaml`. Ensure the project build context contains this repository and the host photo directory exists.
+
+To deploy later GitHub updates:
+
+```bash
+cd /volume1/docker/uce-photo-app
+git pull --ff-only origin peartree
+docker compose up -d --build
+```
+
+Useful commands:
+
+```bash
+docker compose logs -f
+docker compose restart
+docker compose down
+```
+
+Keep port `8501` on the trusted LAN or access it through Tailscale. If internet access is required, put it behind Synology Reverse Proxy with HTTPS and access control; Streamlit itself does not add authentication to this app.
