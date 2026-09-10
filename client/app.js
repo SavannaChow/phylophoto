@@ -3,7 +3,7 @@
 import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseCsv, parseNewick, transformBranchLengths } from "./core.js";
 
 const byId = id => document.getElementById(id);
-const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-options","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count-wrap","prefix-count","regex-wrap","match-regex","comparison-mode","case-sensitive","rooting-mode","single-outgroup-wrap","single-outgroup","single-outgroup-matches","single-outgroup-selected","multiple-outgroups-wrap","multiple-outgroup-search","multiple-outgroup-matches","multiple-outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
+const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count-wrap","prefix-count","regex-wrap","match-regex","comparison-mode","case-sensitive","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
 const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
 const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null };
 
@@ -125,40 +125,46 @@ function renderPhotos() {
 function setSelection(names) { state.selectedTips = [...new Set((Array.isArray(names) ? names : []).filter(name => state.tips.includes(name)))]; renderPhotos(); }
 function postViewer(message) { ui["tree-viewer"].contentWindow?.postMessage(message,window.location.origin); }
 function requestPearTreeSelection(names) { if (!state.viewerReady) return; postViewer({ type:"phylophoto:select",tips:names || [] }); setSelection(names || []); }
+function renderTipMatches() {
+  const search = ui["tip-search"].value.trim().toLocaleLowerCase();
+  const matches = search ? state.tips.filter(name => name.toLocaleLowerCase().includes(search)).slice(0, 12) : [];
+  ui["tip-matches"].replaceChildren(...matches.map(name => {
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "outgroup-match"; button.textContent = name; button.setAttribute("role", "option");
+    button.addEventListener("click", () => { ui["tip-search"].value = name; ui["tip-matches"].replaceChildren(); requestPearTreeSelection([name]); showStatus(""); });
+    return button;
+  }));
+}
 
 function currentRootRequest() {
   const mode = ui["rooting-mode"].value;
   if (mode === "original" || mode === "midpoint") return { mode, names: [] };
-  const names = mode === "single" ? [ui["single-outgroup"].dataset.selectedTip || ui["single-outgroup"].value.trim()].filter(Boolean) : ui["multiple-outgroups"].value.split(/[\n,]+/).map(value => value.trim()).filter(Boolean);
+  const selected = selectedOutgroups();
+  const names = selected.length ? selected : [ui["outgroup-search"].value.trim()].filter(Boolean);
   return { mode, names: [...new Set(names)] };
 }
 
-function selectedMultipleOutgroups() { return [...new Set(ui["multiple-outgroups"].value.split(/[\n,]+/).map(value => value.trim()).filter(Boolean))]; }
-function setMultipleOutgroups(names) { ui["multiple-outgroups"].value = [...new Set(names)].join("\n"); }
+function selectedOutgroups() { return [...new Set(ui["multiple-outgroups"].value.split(/[\n,]+/).map(value => value.trim()).filter(Boolean))]; }
+function setOutgroups(names) { ui["multiple-outgroups"].value = [...new Set(names)].join("\n"); }
 function renderOutgroupPicker() {
   const mode = ui["rooting-mode"].value;
-  const search = mode === "single" ? ui["single-outgroup"].value : ui["multiple-outgroup-search"].value;
+  const search = ui["outgroup-search"].value;
   const matches = search.trim() ? state.tips.filter(name => name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())).slice(0, 12) : [];
-  const matchBox = mode === "single" ? ui["single-outgroup-matches"] : ui["multiple-outgroup-matches"];
-  matchBox.replaceChildren(...matches.map(name => {
+  ui["outgroup-matches"].replaceChildren(...matches.map(name => {
     const button = document.createElement("button");
     button.type = "button"; button.className = "outgroup-match"; button.textContent = name; button.setAttribute("role", "option");
     button.addEventListener("click", () => {
-      if (mode === "single") ui["single-outgroup"].dataset.selectedTip = name;
-      else setMultipleOutgroups([...selectedMultipleOutgroups(), name]);
+      setOutgroups(mode === "single" ? [name] : [...selectedOutgroups(), name]);
       renderOutgroupPicker();
     });
     return button;
   }));
-  const selected = mode === "single" ? [ui["single-outgroup"].dataset.selectedTip].filter(Boolean) : selectedMultipleOutgroups();
-  const selectedBox = mode === "single" ? ui["single-outgroup-selected"] : ui["multiple-outgroup-selected"];
-  selectedBox.replaceChildren(...selected.map(name => {
+  ui["outgroup-selected"].replaceChildren(...selectedOutgroups().map(name => {
     const chip = document.createElement("span"); chip.className = "outgroup-chip";
     const text = document.createElement("span"); text.textContent = name;
     const remove = document.createElement("button"); remove.type = "button"; remove.setAttribute("aria-label", `Remove ${name}`); remove.textContent = "×";
     remove.addEventListener("click", () => {
-      if (mode === "single") delete ui["single-outgroup"].dataset.selectedTip;
-      else setMultipleOutgroups(selectedMultipleOutgroups().filter(value => value !== name));
+      setOutgroups(selectedOutgroups().filter(value => value !== name));
       renderOutgroupPicker();
     });
     chip.append(text, remove); return chip;
@@ -197,10 +203,10 @@ async function loadTree(file) {
   if (!file) return;
   try {
     state.sourceTree = extractNewick(await file.text()); state.parsedTree = parseNewick(state.sourceTree); state.tips = collectTips(state.parsedTree); state.filename = file.name; state.appliedRoot = null;
-    ui["single-outgroup"].value = ""; delete ui["single-outgroup"].dataset.selectedTip; ui["multiple-outgroup-search"].value = ""; setMultipleOutgroups([]); renderOutgroupPicker();
+    ui["outgroup-search"].value = ""; setOutgroups([]); renderOutgroupPicker();
     ui["tree-name"].textContent = file.name;
     for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip"]) ui[id].disabled = false;
-    ui["tip-options"].replaceChildren(...state.tips.map(name => { const option = document.createElement("option"); option.value = name; return option; }));
+    ui["tip-search"].value = ""; renderTipMatches();
     await mountTree(); updateFolderMatches(); setSelection([]); showStatus("");
   } catch (error) { ui["tree-empty"].hidden = false; ui["tree-empty"].textContent = `Could not open tree: ${error.message || error}`; }
 }
@@ -208,12 +214,17 @@ function clearTree() {
   postViewer({ type:"phylophoto:clear" }); revokeImages(); Object.assign(state,{ loadId:0,loadedId:0,currentSettings:{},sourceTree:"",filename:"",parsedTree:null,tips:[],selectedTips:[],files:[],photoFolderHandle:null,folderIndex:new Map(),folderMatches:new Map(),metadata:null,metadataTipColumn:"",appliedRoot:null,pendingRootReport:null });
   ui["tree-empty"].replaceChildren(); const label = document.createElement("label"); label.className = "button primary"; label.htmlFor = "tree-file"; label.textContent = "Open a tree"; ui["tree-empty"].append(label); ui["tree-empty"].hidden = false;
   ui["photo-results"].replaceChildren(); ui["metadata-results"].replaceChildren(); ui["selection-summary"].textContent = ""; ui["tree-name"].textContent = ""; ui["photo-folder-name"].textContent = ""; ui["folder-warning-panel"].hidden = true; showStatus("");
-  for (const id of ["tree-file","photo-folder","metadata-file","single-outgroup","multiple-outgroup-search","multiple-outgroups"]) ui[id].value = "";
-  delete ui["single-outgroup"].dataset.selectedTip; renderOutgroupPicker();
+  for (const id of ["tree-file","photo-folder","metadata-file","tip-search","outgroup-search","multiple-outgroups"]) ui[id].value = "";
+  ui["tip-matches"].replaceChildren(); renderOutgroupPicker();
   for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip","refresh-photo-folder"]) ui[id].disabled = true;
 }
 function updateMatchingControls() { const rule = ui["match-rule"].value; ui["delimiter-wrap"].hidden = rule !== "prefix"; ui["prefix-count-wrap"].hidden = rule !== "prefix"; ui["regex-wrap"].hidden = rule !== "regex"; }
-function updateRootingControls() { const mode = ui["rooting-mode"].value; ui["single-outgroup-wrap"].hidden = mode !== "single"; ui["multiple-outgroups-wrap"].hidden = mode !== "multiple"; renderOutgroupPicker(); }
+function updateRootingControls() {
+  const mode = ui["rooting-mode"].value;
+  ui["outgroup-picker"].hidden = mode !== "single" && mode !== "multiple";
+  if (mode === "single" && selectedOutgroups().length > 1) setOutgroups(selectedOutgroups().slice(0, 1));
+  renderOutgroupPicker();
+}
 function startSplit(event) {
   event.preventDefault(); ui.splitter.classList.add("dragging"); document.body.classList.add("dragging");
   const move = moveEvent => { const rect = ui.workspace.getBoundingClientRect(); setPanelPercent(Math.min(75,Math.max(25,(moveEvent.clientX - rect.left) / rect.width * 100))); };
@@ -228,6 +239,7 @@ ui["photo-folder"].addEventListener("change",event => { state.photoFolderHandle 
 ui["metadata-file"].addEventListener("change",async event => { const file = event.target.files[0]; if (!file) return; state.metadata = parseCsv(await file.text()); state.metadataTipColumn = state.metadata.headers.find(header => state.metadata.rows.some(row => state.tips.includes(row[header]))) || state.metadata.headers[0] || ""; renderMetadata(); });
 ui["clear-tree"].addEventListener("click",clearTree);
 ui["select-tip"].addEventListener("click",() => { const name = ui["tip-search"].value.trim(); if (!state.tips.includes(name)) return showStatus(`Tip not found: ${name}`,true); requestPearTreeSelection([name]); showStatus(""); });
+ui["tip-search"].addEventListener("input",renderTipMatches);
 document.querySelectorAll('input[name="branch-mode"]').forEach(input => input.addEventListener("change",mountTree));
 ui["save-visual-options"].addEventListener("click",() => {
   state.settingsRequest += 1; postViewer({ type:"phylophoto:get-settings",requestId:state.settingsRequest });
@@ -239,8 +251,7 @@ ui["reset-tree-view"].addEventListener("click",() => {
 });
 for (const id of ["match-rule","delimiter","prefix-count","match-regex","comparison-mode","case-sensitive"]) ui[id].addEventListener("change",() => { updateMatchingControls(); updateFolderMatches(); });
 ui["rooting-mode"].addEventListener("change",updateRootingControls);
-ui["single-outgroup"].addEventListener("input", () => { delete ui["single-outgroup"].dataset.selectedTip; renderOutgroupPicker(); });
-ui["multiple-outgroup-search"].addEventListener("input", renderOutgroupPicker);
+ui["outgroup-search"].addEventListener("input", renderOutgroupPicker);
 ui["apply-root"].addEventListener("click",() => applyRoot()); ui.splitter.addEventListener("pointerdown",startSplit);
 ui.splitter.addEventListener("keydown",event => { if (!["ArrowLeft","ArrowRight"].includes(event.key)) return; event.preventDefault(); setPanelPercent(Math.min(75,Math.max(25,panelPercent() + (event.key === "ArrowRight" ? 2 : -2)))); saveUiPreferences(); });
 window.addEventListener("message",event => {
