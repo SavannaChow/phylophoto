@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A browser-local phylogeny photo browser">
+    <title>Phylogeny photo browser</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="app-bar">
+      <strong>Phylogeny photo browser</strong>
+      <span id="tree-name" hidden></span>
+      <label class="file-button" for="tree-file">Open tree</label>
+      <input id="tree-file" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain" hidden>
+      <button id="clear-tree" type="button" disabled>Clear</button>
+    </header>
+
+    <main id="workspace" hidden>
+      <section id="tree-panel" class="panel" aria-label="Phylogeny tree">
+        <div id="tree-viewer"></div>
+      </section>
+      <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize panels" tabindex="0"></div>
+      <section id="photo-panel" class="panel" aria-label="Sample photos">
+        <div id="selection-summary">Select a tip or internal node in the tree.</div>
+        <div id="photo-results"></div>
+      </section>
+    </main>
+
+    <section id="empty-state" class="empty-state">
+      <h1>Open a phylogenetic tree</h1>
+      <p>The selected tree and photos stay in this browser. Nothing is uploaded to Synology.</p>
+      <label class="primary file-button" for="tree-file-empty">Choose tree file</label>
+      <input id="tree-file-empty" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain" hidden>
+    </section>
+
+    <section id="bottom-controls" hidden>
+      <details id="photo-settings" open>
+        <summary>Photo folders</summary>
+        <div class="settings-content">
+          <p>Choose the folder containing one photo subfolder per tip. Its files stay local to this browser tab.</p>
+          <label class="file-button" for="photo-folder">Choose photo folder</label>
+          <input id="photo-folder" type="file" webkitdirectory directory multiple hidden>
+          <span id="photo-folder-name" class="muted">No folder selected</span>
+          <label>
+            Match tip labels to folders
+            <select id="match-rule">
+              <option value="full">Full tip label</option>
+              <option value="prefix">Leading fields</option>
+            </select>
+          </label>
+          <label id="prefix-count-wrap" hidden>
+            Leading fields
+            <input id="prefix-count" type="number" min="1" value="1">
+          </label>
+          <div id="folder-warning" class="warning" hidden></div>
+        </div>
+      </details>
+      <details id="tree-settings">
+        <summary>Tree settings</summary>
+        <div class="settings-content">
+          <p>PearTree's toolbar and visual-options palette provide native zoom, reroot, bootstrap and appearance tools.</p>
+          <button id="reset-tree-view" type="button">Reset PearTree visual settings</button>
+        </div>
+      </details>
+    </section>
+
+    <template id="photo-group-template">
+      <article class="photo-group">
+        <h2></h2>
+        <div class="photo-stack"></div>
+      </article>
+    </template>
+
+    <script src="peartree.bundle.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
