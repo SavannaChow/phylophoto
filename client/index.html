@@ -33,7 +33,8 @@
     </div></details>
     <details id="rooting-panel"><summary>Rooting / outgroup</summary><div class="control-grid">
       <label>Rooting mode <select id="rooting-mode" disabled><option value="original">Original root</option><option value="single">Single outgroup</option><option value="multiple">Multiple outgroups (MRCA)</option><option value="midpoint">Midpoint root</option></select></label>
-      <label id="single-outgroup-wrap" hidden>Outgroup tip <input id="single-outgroup" list="tip-options" autocomplete="off" placeholder="Type to match"></label><label id="multiple-outgroups-wrap" hidden>Outgroup tips <textarea id="multiple-outgroups" rows="3" placeholder="One exact tip label per line"></textarea></label>
+      <div id="single-outgroup-wrap" class="outgroup-picker" hidden><label>Outgroup tip <input id="single-outgroup" autocomplete="off" placeholder="Type to match"></label><div id="single-outgroup-matches" class="outgroup-matches" role="listbox"></div><div id="single-outgroup-selected" class="outgroup-selected"></div></div>
+      <div id="multiple-outgroups-wrap" class="outgroup-picker" hidden><label>Outgroup tips <input id="multiple-outgroup-search" autocomplete="off" placeholder="Type to match"></label><div id="multiple-outgroup-matches" class="outgroup-matches" role="listbox"></div><div id="multiple-outgroup-selected" class="outgroup-selected"></div><textarea id="multiple-outgroups" hidden></textarea></div>
       <button id="apply-root" type="button" disabled>Apply root in PearTree</button><div id="rooting-status" class="status" hidden></div>
     </div></details>
     <details id="folder-warning-panel" hidden><summary id="folder-warning-summary">Folder warnings</summary><div class="table-wrap"><table><thead><tr><th>Tip</th><th>Derived key</th><th>Status</th><th>Candidate folders</th></tr></thead><tbody id="folder-warning-rows"></tbody></table></div></details>
