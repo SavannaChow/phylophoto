@@ -1,0 +1,7 @@
+services:
+  phylophoto-client:
+    build: .
+    container_name: phylophoto-client
+    restart: unless-stopped
+    ports:
+      - "8502:80"
