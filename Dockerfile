@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    UCE_PHOTO_ROOT=/data/photos
+    PHYLOPHOTO_ROOT=/data/photos
 
 WORKDIR /app
 

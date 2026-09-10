@@ -31,7 +31,7 @@ from tree_utils import (
 
 APP_DIR = Path(__file__).resolve().parent
 ROOTING_MODES = ["Original root", "Single outgroup", "Multiple outgroups (MRCA)", "Midpoint root"]
-DEFAULT_PHOTO_ROOT = os.environ.get("UCE_PHOTO_ROOT", "")
+DEFAULT_PHOTO_ROOT = os.environ.get("PHYLOPHOTO_ROOT", "")
 
 
 st.set_page_config(page_title="Phylogeny photo browser", page_icon="🌿", layout="wide")

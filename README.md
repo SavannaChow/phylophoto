@@ -67,23 +67,23 @@ pytest -q
 
 ## Synology Docker deployment
 
-The container listens on port `8501`. The default Compose file maps the Synology folder
-`/volume1/docker/uce-photo-data/photos` to `/data/photos` inside the container. Edit only the left side of that volume mapping if your NAS folder is elsewhere. The photo library must be writable by Container Manager because the app can create missing tip folders and save `phylogeny_photo_preferences.json`.
+The container is named `phylophoto` and listens on port `8501`. The default Compose file maps the Synology folder
+`/volume1/docker/phylophoto/photos` to `/data/photos` inside the container. Edit only the left side of that volume mapping if your NAS folder is elsewhere. The photo library must be writable by Container Manager because the app can create missing tip folders and save `phylogeny_photo_preferences.json`.
 
 ### 1. Publish from VS Code to GitHub
 
-Create an empty GitHub repository named `UCE-photo` (do not add a README or `.gitignore` there). In the VS Code terminal, from this project folder, run:
+Use the GitHub repository `SavannaChow/phylophoto` (do not create a second `UCE-photo` repository). In the VS Code terminal, from this project folder, run:
 
 ```bash
 git status
-git remote add origin https://github.com/YOUR_GITHUB_NAME/UCE-photo.git
+git remote add origin https://github.com/SavannaChow/phylophoto.git
 git push -u origin peartree
 ```
 
 If `origin` already exists, replace the second command with:
 
 ```bash
-git remote set-url origin https://github.com/YOUR_GITHUB_NAME/UCE-photo.git
+git remote set-url origin https://github.com/SavannaChow/phylophoto.git
 ```
 
 For later updates:
@@ -99,10 +99,10 @@ VS Code GUI alternative: open **Source Control**, commit any pending changes, op
 Enable SSH temporarily in DSM, connect to the NAS, and run (replace the GitHub name and NAS paths as needed):
 
 ```bash
-mkdir -p /volume1/docker/uce-photo-data/photos
+mkdir -p /volume1/docker/phylophoto/photos
 cd /volume1/docker
-git clone --branch peartree https://github.com/YOUR_GITHUB_NAME/UCE-photo.git uce-photo-app
-cd uce-photo-app
+git clone --branch peartree https://github.com/SavannaChow/phylophoto.git phylophoto
+cd phylophoto
 docker compose up -d --build
 docker compose ps
 ```
@@ -115,12 +115,12 @@ Open:
 http://SYNOLOGY_IP:8501
 ```
 
-In DSM Container Manager you can instead create a **Project** from the checked-out `uce-photo-app/compose.yaml`. Ensure the project build context contains this repository and the host photo directory exists.
+In DSM Container Manager you can instead create a **Project** from the checked-out `phylophoto/compose.yaml`. Ensure the project build context contains this repository and the host photo directory exists.
 
 To deploy later GitHub updates:
 
 ```bash
-cd /volume1/docker/uce-photo-app
+cd /volume1/docker/phylophoto
 git pull --ff-only origin peartree
 docker compose up -d --build
 ```
