@@ -1,6 +1,6 @@
 # PhyloPhoto client-side edition
 
-A static, browser-local edition of Phylogeny photo browser.
+A static, browser-local edition of Phylogeny photo browser. Its layout mirrors the working local Streamlit/PearTree edition: a compact title bar, full-height tree and photo panels, draggable divider, and collapsed controls below the panels.
 
 ## Privacy model
 
@@ -11,10 +11,10 @@ A static, browser-local edition of Phylogeny photo browser.
 
 ## Use
 
-1. Open the site and choose a Newick or NEXUS tree.
-2. In Photo folders, choose the local root folder that contains one direct subfolder per tip.
+1. Open the site and choose a Newick or NEXUS tree with **Open tree**.
+2. Choose the local root folder that contains one direct subfolder per tip with **Photo folder**.
 3. Click a PearTree tip or internal node. The right panel displays matching photos vertically.
-4. Use PearTree native toolbar/palette for rerooting, bootstrap labels, zoom, and visual settings.
+4. Use PearTree native toolbar/palette for bootstrap labels, zoom, and visual settings. The collapsed controls below the panels also provide searchable tip selection, Original/Proportional/Equal display modes, folder matching, and outgroup or midpoint rooting.
 
 The directory picker is a browser capability. Use a current Chromium browser (Chrome, Edge, or Arc) for the most reliable folder selection. A browser directory selection is read-only, so this edition warns about missing folders but does not create them.
 
