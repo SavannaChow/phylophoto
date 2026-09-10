@@ -12,7 +12,8 @@
     <div class="title-row"><h1>Phylogeny photo browser</h1><span id="tree-name"></span></div>
     <nav class="file-actions" aria-label="Local files">
       <label class="button" for="tree-file">Open tree</label><input id="tree-file" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain" hidden>
-      <label class="button" for="photo-folder">Photo folder</label><input id="photo-folder" type="file" webkitdirectory directory multiple hidden>
+      <button id="choose-photo-folder" type="button">Photo folder</button><input id="photo-folder" type="file" webkitdirectory directory multiple hidden>
+      <button id="refresh-photo-folder" class="icon-button" type="button" aria-label="Refresh photo folder" title="Refresh photo folder" disabled>↻</button>
       <label class="button" for="metadata-file">Metadata CSV</label><input id="metadata-file" type="file" accept=".csv,text/csv" hidden>
       <button id="clear-tree" type="button" disabled>Clear</button>
     </nav>

@@ -3,9 +3,9 @@
 import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseCsv, parseNewick, transformBranchLengths } from "./core.js";
 
 const byId = id => document.getElementById(id);
-const ids = ["tree-file","photo-folder","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-options","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count-wrap","prefix-count","regex-wrap","match-regex","comparison-mode","case-sensitive","rooting-mode","single-outgroup-wrap","single-outgroup","multiple-outgroups-wrap","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
+const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-options","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count-wrap","prefix-count","regex-wrap","match-regex","comparison-mode","case-sensitive","rooting-mode","single-outgroup-wrap","single-outgroup","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
 const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
-const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null };
+const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null };
 
 function matchingOptions() {
   return { rule: ui["match-rule"].value, delimiter: ui.delimiter.value, fieldCount: Number(ui["prefix-count"].value), pattern: ui["match-regex"].value, comparison: ui["comparison-mode"].value, caseSensitive: ui["case-sensitive"].checked };
@@ -28,6 +28,49 @@ function restoreUiPreferences() {
 }
 function showStatus(message, warning = false) { ui["rooting-status"].textContent = message; ui["rooting-status"].classList.toggle("warning", warning); ui["rooting-status"].hidden = !message; }
 function revokeImages() { state.imageUrls.forEach(URL.revokeObjectURL); state.imageUrls = []; }
+
+function setPhotoFiles(files, folderName = "") {
+  state.files = files;
+  state.folderIndex = buildFolderIndex(files);
+  ui["photo-folder-name"].textContent = folderName;
+  ui["refresh-photo-folder"].disabled = !state.photoFolderHandle;
+  updateFolderMatches();
+}
+
+async function filesFromDirectory(handle, path = handle.name) {
+  const files = [];
+  for await (const entry of handle.values()) {
+    const entryPath = `${path}/${entry.name}`;
+    if (entry.kind === "directory") files.push(...await filesFromDirectory(entry, entryPath));
+    else {
+      const source = await entry.getFile();
+      const file = new File([source], source.name, { type: source.type, lastModified: source.lastModified });
+      Object.defineProperty(file, "webkitRelativePath", { value: entryPath });
+      files.push(file);
+    }
+  }
+  return files;
+}
+
+async function choosePhotoFolder() {
+  if (!window.showDirectoryPicker) { ui["photo-folder"].click(); return; }
+  try {
+    const handle = await window.showDirectoryPicker({ mode: "read" });
+    state.photoFolderHandle = handle;
+    setPhotoFiles(await filesFromDirectory(handle), handle.name);
+  } catch (error) {
+    if (error?.name !== "AbortError") showStatus(`Could not read photo folder: ${error.message || error}`, true);
+  }
+}
+
+async function refreshPhotoFolder() {
+  if (!state.photoFolderHandle) return;
+  try {
+    const permission = await state.photoFolderHandle.queryPermission({ mode: "read" });
+    if (permission !== "granted" && await state.photoFolderHandle.requestPermission({ mode: "read" }) !== "granted") throw new Error("Permission to read this photo folder was not granted.");
+    setPhotoFiles(await filesFromDirectory(state.photoFolderHandle), state.photoFolderHandle.name);
+  } catch (error) { showStatus(`Could not refresh photo folder: ${error.message || error}`, true); }
+}
 
 function updateFolderMatches() {
   try {
@@ -129,11 +172,11 @@ async function loadTree(file) {
   } catch (error) { ui["tree-empty"].hidden = false; ui["tree-empty"].textContent = `Could not open tree: ${error.message || error}`; }
 }
 function clearTree() {
-  postViewer({ type:"phylophoto:clear" }); revokeImages(); Object.assign(state,{ loadId:0,loadedId:0,currentSettings:{},sourceTree:"",filename:"",parsedTree:null,tips:[],selectedTips:[],files:[],folderIndex:new Map(),folderMatches:new Map(),metadata:null,metadataTipColumn:"",appliedRoot:null,pendingRootReport:null });
+  postViewer({ type:"phylophoto:clear" }); revokeImages(); Object.assign(state,{ loadId:0,loadedId:0,currentSettings:{},sourceTree:"",filename:"",parsedTree:null,tips:[],selectedTips:[],files:[],photoFolderHandle:null,folderIndex:new Map(),folderMatches:new Map(),metadata:null,metadataTipColumn:"",appliedRoot:null,pendingRootReport:null });
   ui["tree-empty"].replaceChildren(); const label = document.createElement("label"); label.className = "button primary"; label.htmlFor = "tree-file"; label.textContent = "Open a tree"; ui["tree-empty"].append(label); ui["tree-empty"].hidden = false;
   ui["photo-results"].replaceChildren(); ui["metadata-results"].replaceChildren(); ui["selection-summary"].textContent = ""; ui["tree-name"].textContent = ""; ui["photo-folder-name"].textContent = ""; ui["folder-warning-panel"].hidden = true; showStatus("");
   for (const id of ["tree-file","photo-folder","metadata-file"]) ui[id].value = "";
-  for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip"]) ui[id].disabled = true;
+  for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip","refresh-photo-folder"]) ui[id].disabled = true;
 }
 function updateMatchingControls() { const rule = ui["match-rule"].value; ui["delimiter-wrap"].hidden = rule !== "prefix"; ui["prefix-count-wrap"].hidden = rule !== "prefix"; ui["regex-wrap"].hidden = rule !== "regex"; }
 function updateRootingControls() { const mode = ui["rooting-mode"].value; ui["single-outgroup-wrap"].hidden = mode !== "single"; ui["multiple-outgroups-wrap"].hidden = mode !== "multiple"; }
@@ -145,7 +188,9 @@ function startSplit(event) {
 }
 
 ui["tree-file"].addEventListener("change",event => loadTree(event.target.files[0]));
-ui["photo-folder"].addEventListener("change",event => { state.files = [...event.target.files]; state.folderIndex = buildFolderIndex(state.files); ui["photo-folder-name"].textContent = state.files[0]?.webkitRelativePath?.split("/")[0] || ""; updateFolderMatches(); });
+ui["choose-photo-folder"].addEventListener("click",choosePhotoFolder);
+ui["refresh-photo-folder"].addEventListener("click",refreshPhotoFolder);
+ui["photo-folder"].addEventListener("change",event => { state.photoFolderHandle = null; setPhotoFiles([...event.target.files], event.target.files[0]?.webkitRelativePath?.split("/")[0] || ""); });
 ui["metadata-file"].addEventListener("change",async event => { const file = event.target.files[0]; if (!file) return; state.metadata = parseCsv(await file.text()); state.metadataTipColumn = state.metadata.headers.find(header => state.metadata.rows.some(row => state.tips.includes(row[header]))) || state.metadata.headers[0] || ""; renderMetadata(); });
 ui["clear-tree"].addEventListener("click",clearTree);
 ui["select-tip"].addEventListener("click",() => { const name = ui["tip-search"].value.trim(); if (!state.tips.includes(name)) return showStatus(`Tip not found: ${name}`,true); requestPearTreeSelection([name]); showStatus(""); });
