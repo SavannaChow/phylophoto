@@ -84,10 +84,15 @@ function tipKey(tip) {
   return tip.split("_").slice(0, count).join("_");
 }
 
+function relativePathWithinPhotoRoot(file) {
+  const parts = (file.webkitRelativePath || file.name).split("/");
+  return parts.length > 1 ? parts.slice(1).join("/") : file.name;
+}
+
 function directFolderNames() {
   const names = new Set();
   folderFiles.forEach(file => {
-    const parts = (file.webkitRelativePath || file.name).split("/");
+    const parts = relativePathWithinPhotoRoot(file).split("/");
     if (parts.length > 1 && parts[0]) names.add(parts[0]);
   });
   return names;
@@ -99,7 +104,7 @@ function filesForTip(tip) {
   if (matchingFolders.length !== 1) return { folders: matchingFolders, files: [] };
   const folder = matchingFolders[0];
   const files = folderFiles.filter(file => {
-    const relative = file.webkitRelativePath || file.name;
+    const relative = relativePathWithinPhotoRoot(file);
     const isImage = IMAGE_TYPES.has(file.type) || IMAGE_EXTENSIONS.test(file.name);
     return relative.startsWith(`${folder}/`) && isImage;
   });
