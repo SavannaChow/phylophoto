@@ -32,7 +32,7 @@
     <details id="folder-settings-panel"><summary>Photo folders <span id="photo-folder-name" class="summary-meta"></span></summary><div class="control-grid">
       <label>Tip-to-folder key <select id="match-rule"><option value="full">Full tip label</option><option value="prefix">Leading fields</option><option value="regex">Regular expression</option></select></label>
       <label id="delimiter-wrap" hidden>Delimiter <input id="delimiter" value="_"></label><label id="prefix-count-wrap" hidden>Leading fields <input id="prefix-count" type="number" min="1" value="1"></label><label id="regex-wrap" hidden>Regex <input id="match-regex" value="^([^_]+)"></label>
-      <label>Comparison <select id="comparison-mode"><option value="equals">Equals key</option><option value="starts">Starts with key</option></select></label><label class="inline-check"><input id="case-sensitive" type="checkbox"> Case-sensitive</label>
+      <label>Comparison <select id="comparison-mode"><option value="equals">Equals key</option><option value="starts">Starts with key</option></select></label><label class="inline-check"><input id="case-sensitive" type="checkbox"> Case-sensitive</label><label class="inline-check"><input id="lazy-photo-loading" type="checkbox"> Load photos on scroll</label>
     </div></details>
     <details id="nas-upload-panel" hidden><summary>Upload dataset to NAS</summary><div class="control-grid">
       <label>Upload to NAS folder <select id="upload-target"><option value="">New folder</option></select></label>

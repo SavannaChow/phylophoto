@@ -3,16 +3,16 @@
 import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseCsv, parseNewick, transformBranchLengths } from "./core.js";
 
 const byId = id => document.getElementById(id);
-const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","nas-dataset","load-nas-dataset","share-dataset","nas-upload-panel","upload-target","upload-dataset-id","upload-tree-file","upload-photo-folder","upload-metadata-file","upload-dataset","upload-progress","upload-status","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count-wrap","prefix-count","regex-wrap","match-regex","comparison-mode","case-sensitive","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
+const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","nas-dataset","load-nas-dataset","share-dataset","nas-upload-panel","upload-target","upload-dataset-id","upload-tree-file","upload-photo-folder","upload-metadata-file","upload-dataset","upload-progress","upload-status","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","comparison-mode","case-sensitive","lazy-photo-loading","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
 const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
-const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, nasDatasetId: "", folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null };
+const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, nasDatasetId: "", folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], photoObserver: null, metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null };
 
 function matchingOptions() {
   return { rule: ui["match-rule"].value, delimiter: ui.delimiter.value, fieldCount: Number(ui["prefix-count"].value), pattern: ui["match-regex"].value, comparison: ui["comparison-mode"].value, caseSensitive: ui["case-sensitive"].checked };
 }
 function panelPercent() { const width = ui.workspace.getBoundingClientRect().width; return width ? ui["tree-panel"].getBoundingClientRect().width / width * 100 : 56; }
 function setPanelPercent(percent) { ui.workspace.style.gridTemplateColumns = `minmax(300px,${percent}fr) 10px minmax(300px,${100 - percent}fr)`; ui.splitter.setAttribute("aria-valuenow", Math.round(percent)); }
-function saveUiPreferences() { localStorage.setItem("phylophoto-client-ui", JSON.stringify({ panel: panelPercent(), matching: matchingOptions() })); }
+function saveUiPreferences() { localStorage.setItem("phylophoto-client-ui", JSON.stringify({ panel: panelPercent(), matching: matchingOptions(), lazyPhotoLoading: ui["lazy-photo-loading"].checked })); }
 function restoreUiPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem("phylophoto-client-ui") || "{}"), matching = saved.matching || {};
@@ -22,12 +22,12 @@ function restoreUiPreferences() {
     if (Number(matching.fieldCount) >= 1) ui["prefix-count"].value = matching.fieldCount;
     if (typeof matching.pattern === "string") ui["match-regex"].value = matching.pattern;
     if (["equals","starts"].includes(matching.comparison)) ui["comparison-mode"].value = matching.comparison;
-    ui["case-sensitive"].checked = Boolean(matching.caseSensitive);
+    ui["case-sensitive"].checked = Boolean(matching.caseSensitive); ui["lazy-photo-loading"].checked = Boolean(saved.lazyPhotoLoading);
   } catch { localStorage.removeItem("phylophoto-client-ui"); }
   updateMatchingControls();
 }
 function showStatus(message, warning = false) { ui["rooting-status"].textContent = message; ui["rooting-status"].classList.toggle("warning", warning); ui["rooting-status"].hidden = !message; }
-function revokeImages() { state.imageUrls.forEach(URL.revokeObjectURL); state.imageUrls = []; }
+function revokeImages() { state.photoObserver?.disconnect(); state.photoObserver = null; state.imageUrls.forEach(URL.revokeObjectURL); state.imageUrls = []; }
 
 function setPhotoFiles(files, folderName = "") {
   state.files = files;
@@ -119,6 +119,18 @@ function renderMetadata() {
 
 function renderPhotos() {
   revokeImages(); ui["photo-results"].replaceChildren();
+  const progressive = ui["lazy-photo-loading"].checked && "IntersectionObserver" in window;
+  if (progressive) {
+    state.photoObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const image = entry.target;
+        image.src = image.dataset.source;
+        delete image.dataset.source;
+        state.photoObserver?.unobserve(image);
+      });
+    }, { root: ui["photo-panel"], rootMargin:"240px 0px" });
+  }
   ui["selection-summary"].textContent = state.selectedTips.length === 1 ? `Tip — ${state.selectedTips[0]}` : state.selectedTips.length ? `Selected node — ${state.selectedTips.length} descendant tips` : "";
   renderMetadata();
   if (!state.selectedTips.length || !state.files.length) return;
@@ -132,7 +144,7 @@ function renderPhotos() {
     for (const file of files) {
       const figure = document.createElement("figure"), image = document.createElement("img"), caption = document.createElement("figcaption");
       const url = file.url || URL.createObjectURL(file);
-      if (!file.url) state.imageUrls.push(url); image.src = url; image.alt = file.name; caption.textContent = file.webkitRelativePath || file.name; figure.append(image,caption); stack.append(figure);
+      if (!file.url) state.imageUrls.push(url); if (progressive) { image.dataset.source = url; state.photoObserver.observe(image); } else image.src = url; image.alt = file.name; caption.textContent = file.webkitRelativePath || file.name; figure.append(image,caption); stack.append(figure);
     }
     ui["photo-results"].append(article);
   }
@@ -385,6 +397,7 @@ ui["outgroup-search"].addEventListener("input", renderOutgroupPicker);
 ui["apply-root"].addEventListener("click",() => applyRoot()); ui.splitter.addEventListener("pointerdown",startSplit);
 ui["upload-dataset"].addEventListener("click",uploadDataset);
 ui["upload-target"].addEventListener("change",updateUploadTarget);
+ui["lazy-photo-loading"].addEventListener("change",() => { saveUiPreferences(); renderPhotos(); });
 ui.splitter.addEventListener("keydown",event => { if (!["ArrowLeft","ArrowRight"].includes(event.key)) return; event.preventDefault(); setPanelPercent(Math.min(75,Math.max(25,panelPercent() + (event.key === "ArrowRight" ? 2 : -2)))); saveUiPreferences(); });
 window.addEventListener("message",event => {
   if (event.origin !== window.location.origin || event.source !== ui["tree-viewer"].contentWindow) return;
