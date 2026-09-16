@@ -174,20 +174,26 @@ class Handler(SimpleHTTPRequestHandler):
     def create_upload_dataset(self, dataset_id: str) -> None:
         if not DATASET_ID.fullmatch(dataset_id):
             raise DatasetError("Invalid dataset id")
-        if any((DATA_ROOT / parent / dataset_id).resolve().is_dir() for parent in ("", "datasets")):
-            raise DatasetError("This dataset id already exists in the read-only library")
         body = self.read_json_body()
+        append = bool(body.get("append"))
+        dataset_dir = (UPLOAD_ROOT / dataset_id).resolve()
+        if not inside(dataset_dir, UPLOAD_ROOT):
+            raise DatasetError("Invalid upload path")
+        if append:
+            if not dataset_dir.is_dir():
+                raise DatasetError("NAS folder not found")
+            self.send_json({"id": dataset_id})
+            return
+        if dataset_dir.exists():
+            raise DatasetError("A NAS folder with this name already exists")
         tree_name = str(body.get("tree") or "")
         metadata_name = str(body.get("metadata") or "")
         if not tree_name or Path(tree_name).name != tree_name or Path(tree_name).suffix.lower() not in TREE_EXTENSIONS:
             raise DatasetError("Invalid tree filename")
         if metadata_name and (Path(metadata_name).name != metadata_name or Path(metadata_name).suffix.lower() != ".csv"):
             raise DatasetError("Invalid metadata filename")
-        dataset_dir = (UPLOAD_ROOT / dataset_id).resolve()
-        if not inside(dataset_dir, UPLOAD_ROOT):
-            raise DatasetError("Invalid upload path")
         dataset_dir.mkdir(parents=True, exist_ok=True)
-        manifest = {"title": str(body.get("title") or dataset_id), "tree": tree_name, "photos": "."}
+        manifest = {"tree": tree_name, "photos": "."}
         if metadata_name: manifest["metadata"] = metadata_name
         temporary = dataset_dir / ".dataset.json.uploading"
         temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -198,8 +204,8 @@ class Handler(SimpleHTTPRequestHandler):
         if not DATASET_ID.fullmatch(dataset_id):
             raise DatasetError("Invalid dataset id")
         dataset_dir = (UPLOAD_ROOT / dataset_id).resolve()
-        if not (dataset_dir / "dataset.json").is_file():
-            raise DatasetError("Create the upload dataset before uploading files")
+        if not inside(dataset_dir, UPLOAD_ROOT) or not dataset_dir.is_dir():
+            raise DatasetError("NAS folder not found")
         relative = unquote(relative).lstrip("/")
         if kind in {"tree", "metadata"} and Path(relative).name != relative:
             raise DatasetError("Invalid filename")

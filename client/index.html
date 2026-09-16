@@ -35,8 +35,8 @@
       <label>Comparison <select id="comparison-mode"><option value="equals">Equals key</option><option value="starts">Starts with key</option></select></label><label class="inline-check"><input id="case-sensitive" type="checkbox"> Case-sensitive</label>
     </div></details>
     <details id="nas-upload-panel" hidden><summary>Upload dataset to NAS</summary><div class="control-grid">
-      <label>Dataset ID <input id="upload-dataset-id" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="analysis-2026-a"></label>
-      <label>Display name <input id="upload-dataset-title" placeholder="Analysis title"></label>
+      <label>Upload to NAS folder <select id="upload-target"><option value="">New folder</option></select></label>
+      <label>Folder name <input id="upload-dataset-id" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="analysis-2026-a"></label>
       <label>Tree file <input id="upload-tree-file" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain"></label>
       <label>Photo folder <input id="upload-photo-folder" type="file" webkitdirectory directory multiple></label>
       <label>Metadata CSV (optional) <input id="upload-metadata-file" type="file" accept=".csv,text/csv"></label>

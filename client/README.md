@@ -10,7 +10,7 @@ Use **Open tree** and **Photo folder** exactly as before. The selected local fil
 
 ### NAS dataset mode
 
-Docker reads an existing NAS data directory through a read-only mount. The browser downloads only the selected tree, a list of photo filenames, and photos that are actually displayed. It does not copy the photo library into Docker.
+Docker reads the NAS data directory directly. The browser downloads only the selected tree, a list of photo filenames, and photos that are actually displayed. It does not copy the photo library into Docker.
 
 Each analysis has a stable dataset ID. Selecting a NAS dataset enables the link button. A link such as the following automatically loads the same tree and photo library for anyone who can reach that Synology service:
 
@@ -48,16 +48,15 @@ Paths are relative to the analysis directory and must remain inside the mounted 
 
 ## Optional browser upload
 
-Each named analysis folder is one dataset: it contains that analysis's tree and folders named after its tree tips. There is no extra category hierarchy. Large photo libraries should normally be copied directly into the NAS shared data folder and mounted read-only. Browser upload is available as a simpler fallback and writes only to a separate upload directory, never to the read-only library.
+Each named analysis folder is one dataset: it contains that analysis's tree and folders named after its tree tips. There is no extra category hierarchy. Large photo libraries can be copied directly into the NAS shared folder, or uploaded through the browser.
 
 Create `client/.env` on the NAS:
 
 ```dotenv
 PHYLOPHOTO_DATA_PATH=/volume1/docker/phylophoto/data
-PHYLOPHOTO_UPLOAD_PATH=/volume1/docker/phylophoto/uploads
 ```
 
-The collapsed **Upload dataset to NAS** panel is always available when the NAS service is running. Enter a new dataset name, choose its tree and photo folder, then upload. It creates `uploads/<dataset-id>/` for that analysis. Existing NAS analysis folders appear in the same selector and can be loaded directly.
+The collapsed **Upload dataset to NAS** panel writes directly into this same shared folder. Choose **New folder**, enter its **Folder name**, choose its tree and photo folder, then upload. To add photos later, choose that existing NAS folder in **Upload to NAS folder**, choose only a photo folder, and upload. Existing files with the same path are replaced.
 
 Uploads are streamed one file at a time with three concurrent transfers. They are practical on the local network, but directly placing very large libraries on the NAS remains faster and more reliable.
 
@@ -77,8 +76,7 @@ The service is stateless for viewers: multiple tabs and multiple people can view
 
 ## Security boundaries
 
-- The main NAS data mount is read-only.
-- Uploaded files use a separate writable mount.
+- The configured NAS data mount is writable so browser uploads can create folders and add photos directly in the shared library.
 - Dataset IDs and file paths are validated against path traversal.
 - This deployment has no login: anyone who can reach the NAS service can view datasets and upload a dataset. Keep it inside a trusted LAN/VPN or protect it with your reverse proxy/firewall.
 - PearTree visual settings remain browser-local and are not included in shared dataset links.
