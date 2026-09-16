@@ -57,7 +57,7 @@ def read_manifest(dataset_dir: Path, data_root: Path) -> dict:
         tree_path = candidates[0].resolve()
     if not inside(tree_path, data_root):
         raise DatasetError("Tree path leaves the configured data root")
-    photos_path = safe_path(dataset_dir, str(manifest.get("photos", "photos")), data_root, "Photos")
+    photos_path = safe_path(dataset_dir, str(manifest.get("photos", ".")), data_root, "Photos")
     metadata_value = manifest.get("metadata")
     metadata_path = safe_path(dataset_dir, str(metadata_value), data_root, "Metadata") if metadata_value else None
     if not tree_path.is_file():
@@ -75,15 +75,18 @@ def dataset_roots(data_root: Path | None = None) -> list[Path]:
     return list(dict.fromkeys([DATA_ROOT, UPLOAD_ROOT]))
 
 
+def dataset_directories(root: Path) -> list[Path]:
+    direct = sorted(path for path in root.iterdir() if path.is_dir() and path.name != "datasets" and DATASET_ID.fullmatch(path.name)) if root.is_dir() else []
+    legacy_root = root / "datasets"
+    legacy = sorted(path for path in legacy_root.iterdir() if path.is_dir() and DATASET_ID.fullmatch(path.name)) if legacy_root.is_dir() else []
+    return direct + legacy
+
+
 def discover_datasets(data_root: Path | None = None) -> tuple[list[dict], dict[str, str]]:
     datasets, errors = [], {}
     seen = set()
     for root in dataset_roots(data_root):
-        datasets_root = root / "datasets"
-        if not datasets_root.is_dir():
-            continue
-        folders = sorted(path for path in datasets_root.iterdir() if path.is_dir() and DATASET_ID.fullmatch(path.name))
-        for dataset_dir in folders:
+        for dataset_dir in dataset_directories(root):
             if dataset_dir.name in seen:
                 errors[dataset_dir.name] = "Duplicate dataset id"
                 continue
@@ -100,10 +103,10 @@ def get_dataset(dataset_id: str, data_root: Path | None = None) -> dict:
     if not DATASET_ID.fullmatch(dataset_id):
         raise DatasetError("Invalid dataset id")
     for root in dataset_roots(data_root):
-        datasets_root = (root / "datasets").resolve()
-        dataset_dir = (datasets_root / dataset_id).resolve()
-        if inside(dataset_dir, datasets_root) and dataset_dir.is_dir():
-            return read_manifest(dataset_dir, root)
+        for candidate in (root / dataset_id, root / "datasets" / dataset_id):
+            dataset_dir = candidate.resolve()
+            if inside(dataset_dir, root) and dataset_dir.is_dir():
+                return read_manifest(dataset_dir, root)
     raise DatasetError("Dataset not found")
 
 
@@ -171,7 +174,7 @@ class Handler(SimpleHTTPRequestHandler):
     def create_upload_dataset(self, dataset_id: str) -> None:
         if not DATASET_ID.fullmatch(dataset_id):
             raise DatasetError("Invalid dataset id")
-        if (DATA_ROOT / "datasets" / dataset_id).resolve().is_dir():
+        if any((DATA_ROOT / parent / dataset_id).resolve().is_dir() for parent in ("", "datasets")):
             raise DatasetError("This dataset id already exists in the read-only library")
         body = self.read_json_body()
         tree_name = str(body.get("tree") or "")
@@ -180,11 +183,11 @@ class Handler(SimpleHTTPRequestHandler):
             raise DatasetError("Invalid tree filename")
         if metadata_name and (Path(metadata_name).name != metadata_name or Path(metadata_name).suffix.lower() != ".csv"):
             raise DatasetError("Invalid metadata filename")
-        dataset_dir = (UPLOAD_ROOT / "datasets" / dataset_id).resolve()
+        dataset_dir = (UPLOAD_ROOT / dataset_id).resolve()
         if not inside(dataset_dir, UPLOAD_ROOT):
             raise DatasetError("Invalid upload path")
-        dataset_dir.mkdir(parents=True, exist_ok=True); (dataset_dir / "photos").mkdir(exist_ok=True)
-        manifest = {"title": str(body.get("title") or dataset_id), "tree": tree_name, "photos": "photos"}
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        manifest = {"title": str(body.get("title") or dataset_id), "tree": tree_name, "photos": "."}
         if metadata_name: manifest["metadata"] = metadata_name
         temporary = dataset_dir / ".dataset.json.uploading"
         temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -194,7 +197,7 @@ class Handler(SimpleHTTPRequestHandler):
     def upload_file(self, dataset_id: str, kind: str, relative: str) -> None:
         if not DATASET_ID.fullmatch(dataset_id):
             raise DatasetError("Invalid dataset id")
-        dataset_dir = (UPLOAD_ROOT / "datasets" / dataset_id).resolve()
+        dataset_dir = (UPLOAD_ROOT / dataset_id).resolve()
         if not (dataset_dir / "dataset.json").is_file():
             raise DatasetError("Create the upload dataset before uploading files")
         relative = unquote(relative).lstrip("/")
@@ -206,7 +209,7 @@ class Handler(SimpleHTTPRequestHandler):
             raise DatasetError("Invalid metadata file")
         if kind == "photos" and Path(relative).suffix.lower() not in IMAGE_EXTENSIONS:
             raise DatasetError("Invalid photo file")
-        base = dataset_dir / ("photos" if kind == "photos" else "")
+        base = dataset_dir
         target = (base / relative).resolve()
         if not inside(target, dataset_dir):
             raise DatasetError("Invalid upload path")

@@ -20,22 +20,20 @@ http://SYNOLOGY_IP:8502/?dataset=analysis-2026-a
 
 ## NAS directory layout
 
-The simplest layout needs no configuration file when there is exactly one tree file:
+Each named folder is one analysis. Put its tree and folders named exactly like its tree tips directly together; no `datasets/` or `photos/` folder is needed:
 
 ```text
-/volume1/docker/phylophoto/data/
-└── datasets/
-    └── analysis-2026-a/
-        ├── analysis.tree
-        └── photos/
-            ├── Full_tip_label_A/
-            │   ├── photo1.jpg
-            │   └── photo2.jpg
-            └── Full_tip_label_B/
-                └── photo1.jpg
+/volume1/R204公用/Phylophoto/
+└── Ahyacinthus/
+    ├── analysis.tree
+    ├── Full_tip_label_A/
+    │   ├── photo1.jpg
+    │   └── photo2.jpg
+    └── Full_tip_label_B/
+        └── photo1.jpg
 ```
 
-For an explicit title, metadata, or paths, add `dataset.json` inside the analysis directory:
+The simplest layout needs no configuration file when the analysis folder has exactly one tree file. For an explicit title, metadata, or a non-standard photo location, add `dataset.json` inside the analysis directory:
 
 ```json
 {
@@ -46,11 +44,11 @@ For an explicit title, metadata, or paths, add `dataset.json` inside the analysi
 }
 ```
 
-Paths are relative to the dataset directory and must remain inside the mounted data root. Separate analysis directories can use different trees and photo libraries. They can also reference a shared photo library with a relative path such as `../../shared-photos/acropora`, provided the target remains inside the mounted data root.
+Paths are relative to the analysis directory and must remain inside the mounted data root. Existing `datasets/<analysis>/photos/` layouts remain readable for compatibility.
 
 ## Optional browser upload
 
-Each named analysis folder is one dataset: it contains that analysis's tree and its `photos/` folder. There is no extra category hierarchy. Large photo libraries should normally be copied directly into the NAS shared data folder and mounted read-only. Browser upload is available as a simpler fallback and writes only to a separate upload directory, never to the read-only library.
+Each named analysis folder is one dataset: it contains that analysis's tree and folders named after its tree tips. There is no extra category hierarchy. Large photo libraries should normally be copied directly into the NAS shared data folder and mounted read-only. Browser upload is available as a simpler fallback and writes only to a separate upload directory, never to the read-only library.
 
 Create `client/.env` on the NAS:
 
@@ -59,7 +57,7 @@ PHYLOPHOTO_DATA_PATH=/volume1/docker/phylophoto/data
 PHYLOPHOTO_UPLOAD_PATH=/volume1/docker/phylophoto/uploads
 ```
 
-The collapsed **Upload dataset to NAS** panel is always available when the NAS service is running. Enter a new dataset name, choose its tree and photo folder, then upload. It creates `uploads/datasets/<dataset-id>/` for that analysis. Existing NAS analysis folders appear in the same selector and can be loaded directly.
+The collapsed **Upload dataset to NAS** panel is always available when the NAS service is running. Enter a new dataset name, choose its tree and photo folder, then upload. It creates `uploads/<dataset-id>/` for that analysis. Existing NAS analysis folders appear in the same selector and can be loaded directly.
 
 Uploads are streamed one file at a time with three concurrent transfers. They are practical on the local network, but directly placing very large libraries on the NAS remains faster and more reliable.
 

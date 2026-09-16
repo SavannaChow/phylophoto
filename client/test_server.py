@@ -44,6 +44,20 @@ class DatasetTests(unittest.TestCase):
             self.assertEqual(errors, {})
             self.assertEqual(datasets[0]["treeFile"], "only.tree")
 
+    def test_discovers_direct_tree_and_tip_folders(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            analysis = root / "Ahyacinthus"
+            tip_folder = analysis / "S1_Acropora_sp2_Keelung_Waimushan"
+            tip_folder.mkdir(parents=True)
+            (analysis / "analysis.tree").write_text("(S1_Acropora_sp2_Keelung_Waimushan:1,Other:1);", encoding="utf-8")
+            (tip_folder / "photo.jpg").write_bytes(b"photo")
+            datasets, errors = server.discover_datasets(root)
+            self.assertEqual(errors, {})
+            self.assertEqual(datasets[0]["id"], "Ahyacinthus")
+            payload = server.dataset_payload("Ahyacinthus", root)
+            self.assertEqual(payload["photoFolders"]["S1_Acropora_sp2_Keelung_Waimushan"][0]["name"], "photo.jpg")
+
     def test_rejects_paths_outside_data_root(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
