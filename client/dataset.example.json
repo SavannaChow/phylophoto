@@ -1,0 +1,6 @@
+{
+  "title": "Acropora analysis example",
+  "tree": "analysis.tree",
+  "photos": "photos",
+  "metadata": "metadata.csv"
+}

@@ -14,6 +14,9 @@
       <label class="button" for="tree-file">Open tree</label><input id="tree-file" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain" hidden>
       <button id="choose-photo-folder" type="button">Photo folder</button><input id="photo-folder" type="file" webkitdirectory directory multiple hidden>
       <button id="refresh-photo-folder" class="icon-button" type="button" aria-label="Refresh photo folder" title="Refresh photo folder" disabled>↻</button>
+      <select id="nas-dataset" aria-label="NAS dataset" title="NAS dataset" hidden><option value="">NAS dataset</option></select>
+      <button id="load-nas-dataset" type="button" hidden disabled>Load NAS</button>
+      <button id="share-dataset" class="icon-button" type="button" aria-label="Copy dataset share link" title="Copy dataset share link" hidden disabled>🔗</button>
       <label class="button" for="metadata-file">Metadata CSV</label><input id="metadata-file" type="file" accept=".csv,text/csv" hidden>
       <button id="clear-tree" type="button" disabled>Clear</button>
     </nav>
@@ -30,6 +33,17 @@
       <label>Tip-to-folder key <select id="match-rule"><option value="full">Full tip label</option><option value="prefix">Leading fields</option><option value="regex">Regular expression</option></select></label>
       <label id="delimiter-wrap" hidden>Delimiter <input id="delimiter" value="_"></label><label id="prefix-count-wrap" hidden>Leading fields <input id="prefix-count" type="number" min="1" value="1"></label><label id="regex-wrap" hidden>Regex <input id="match-regex" value="^([^_]+)"></label>
       <label>Comparison <select id="comparison-mode"><option value="equals">Equals key</option><option value="starts">Starts with key</option></select></label><label class="inline-check"><input id="case-sensitive" type="checkbox"> Case-sensitive</label>
+    </div></details>
+    <details id="nas-upload-panel" hidden><summary>Upload dataset to NAS</summary><div class="control-grid">
+      <label>Dataset ID <input id="upload-dataset-id" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="analysis-2026-a"></label>
+      <label>Display name <input id="upload-dataset-title" placeholder="Analysis title"></label>
+      <label>Tree file <input id="upload-tree-file" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain"></label>
+      <label>Photo folder <input id="upload-photo-folder" type="file" webkitdirectory directory multiple></label>
+      <label>Metadata CSV (optional) <input id="upload-metadata-file" type="file" accept=".csv,text/csv"></label>
+      <label>Upload token <input id="upload-token" type="password" autocomplete="off"></label>
+      <button id="upload-dataset" type="button">Upload</button>
+      <progress id="upload-progress" value="0" max="1" hidden></progress>
+      <div id="upload-status" class="status" hidden></div>
     </div></details>
     <details id="rooting-panel"><summary>Rooting / outgroup</summary><div class="control-grid">
       <label>Rooting mode <select id="rooting-mode" disabled><option value="original">Original root</option><option value="single">Single outgroup</option><option value="multiple">Multiple outgroups (MRCA)</option><option value="midpoint">Midpoint root</option></select></label>

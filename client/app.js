@@ -3,9 +3,9 @@
 import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseCsv, parseNewick, transformBranchLengths } from "./core.js";
 
 const byId = id => document.getElementById(id);
-const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count-wrap","prefix-count","regex-wrap","match-regex","comparison-mode","case-sensitive","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
+const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","nas-dataset","load-nas-dataset","share-dataset","nas-upload-panel","upload-dataset-id","upload-dataset-title","upload-tree-file","upload-photo-folder","upload-metadata-file","upload-token","upload-dataset","upload-progress","upload-status","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count-wrap","prefix-count","regex-wrap","match-regex","comparison-mode","case-sensitive","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
 const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
-const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null };
+const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, nasDatasetId: "", folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null };
 
 function matchingOptions() {
   return { rule: ui["match-rule"].value, delimiter: ui.delimiter.value, fieldCount: Number(ui["prefix-count"].value), pattern: ui["match-regex"].value, comparison: ui["comparison-mode"].value, caseSensitive: ui["case-sensitive"].checked };
@@ -33,8 +33,21 @@ function setPhotoFiles(files, folderName = "") {
   state.files = files;
   state.folderIndex = buildFolderIndex(files);
   ui["photo-folder-name"].textContent = folderName;
-  ui["refresh-photo-folder"].disabled = !state.photoFolderHandle;
+  ui["refresh-photo-folder"].disabled = !state.photoFolderHandle && !state.nasDatasetId;
   updateFolderMatches();
+}
+
+function setDatasetQuery(datasetId = "") {
+  const url = new URL(window.location.href);
+  if (datasetId) url.searchParams.set("dataset", datasetId);
+  else url.searchParams.delete("dataset");
+  history.replaceState(null, "", url);
+}
+
+function leaveNasDataset() {
+  state.nasDatasetId = "";
+  ui["share-dataset"].disabled = true;
+  setDatasetQuery();
 }
 
 async function filesFromDirectory(handle, path = handle.name) {
@@ -57,6 +70,7 @@ async function choosePhotoFolder() {
   try {
     const handle = await window.showDirectoryPicker({ mode: "read" });
     state.photoFolderHandle = handle;
+    leaveNasDataset();
     setPhotoFiles(await filesFromDirectory(handle), handle.name);
   } catch (error) {
     if (error?.name !== "AbortError") showStatus(`Could not read photo folder: ${error.message || error}`, true);
@@ -64,8 +78,9 @@ async function choosePhotoFolder() {
 }
 
 async function refreshPhotoFolder() {
-  if (!state.photoFolderHandle) return;
+  if (!state.photoFolderHandle && !state.nasDatasetId) return;
   try {
+    if (state.nasDatasetId) return await loadNasDataset(state.nasDatasetId);
     const permission = await state.photoFolderHandle.queryPermission({ mode: "read" });
     if (permission !== "granted" && await state.photoFolderHandle.requestPermission({ mode: "read" }) !== "granted") throw new Error("Permission to read this photo folder was not granted.");
     setPhotoFiles(await filesFromDirectory(state.photoFolderHandle), state.photoFolderHandle.name);
@@ -115,8 +130,9 @@ function renderPhotos() {
     const article = byId("photo-group-template").content.firstElementChild.cloneNode(true); article.querySelector("h2").textContent = tip;
     const stack = article.querySelector(".photo-stack");
     for (const file of files) {
-      const figure = document.createElement("figure"), image = document.createElement("img"), caption = document.createElement("figcaption"), url = URL.createObjectURL(file);
-      state.imageUrls.push(url); image.src = url; image.alt = file.name; caption.textContent = file.webkitRelativePath || file.name; figure.append(image,caption); stack.append(figure);
+      const figure = document.createElement("figure"), image = document.createElement("img"), caption = document.createElement("figcaption");
+      const url = file.url || URL.createObjectURL(file);
+      if (!file.url) state.imageUrls.push(url); image.src = url; image.alt = file.name; caption.textContent = file.webkitRelativePath || file.name; figure.append(image,caption); stack.append(figure);
     }
     ui["photo-results"].append(article);
   }
@@ -199,23 +215,122 @@ async function mountTree() {
   postViewer({ type:"phylophoto:load-tree",tree,filename:state.filename,settings,theme:matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",loadId:state.loadId });
 }
 
+async function loadTreeText(text, filename) {
+  state.sourceTree = extractNewick(text); state.parsedTree = parseNewick(state.sourceTree); state.tips = collectTips(state.parsedTree); state.filename = filename; state.appliedRoot = null;
+  ui["outgroup-search"].value = ""; setOutgroups([]); renderOutgroupPicker();
+  ui["tree-name"].textContent = filename;
+  for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip"]) ui[id].disabled = false;
+  ui["tip-search"].value = ""; renderTipMatches();
+  await mountTree(); updateFolderMatches(); setSelection([]); showStatus("");
+}
+
 async function loadTree(file) {
   if (!file) return;
+  leaveNasDataset();
+  try { await loadTreeText(await file.text(), file.name); }
+  catch (error) { ui["tree-empty"].hidden = false; ui["tree-empty"].textContent = `Could not open tree: ${error.message || error}`; }
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, { cache:"no-store" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
+  return payload;
+}
+
+async function loadNasDataset(datasetId) {
+  if (!datasetId) return;
+  ui["load-nas-dataset"].disabled = true;
   try {
-    state.sourceTree = extractNewick(await file.text()); state.parsedTree = parseNewick(state.sourceTree); state.tips = collectTips(state.parsedTree); state.filename = file.name; state.appliedRoot = null;
-    ui["outgroup-search"].value = ""; setOutgroups([]); renderOutgroupPicker();
-    ui["tree-name"].textContent = file.name;
-    for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip"]) ui[id].disabled = false;
-    ui["tip-search"].value = ""; renderTipMatches();
-    await mountTree(); updateFolderMatches(); setSelection([]); showStatus("");
-  } catch (error) { ui["tree-empty"].hidden = false; ui["tree-empty"].textContent = `Could not open tree: ${error.message || error}`; }
+    const dataset = await fetchJson(`/api/datasets/${encodeURIComponent(datasetId)}`);
+    const treeResponse = await fetch(dataset.tree.url, { cache:"no-store" });
+    if (!treeResponse.ok) throw new Error(`Could not read tree (${treeResponse.status})`);
+    state.nasDatasetId = dataset.id; state.photoFolderHandle = null; state.files = []; state.folderIndex = new Map(); state.metadata = null; state.metadataTipColumn = "";
+    await loadTreeText(await treeResponse.text(), dataset.tree.filename);
+    const files = Object.entries(dataset.photoFolders || {}).flatMap(([folder, photos]) => photos.map(photo => ({ ...photo, webkitRelativePath:`nas/${folder}/${photo.path.split("/").slice(1).join("/") || photo.name}` })));
+    setPhotoFiles(files, `NAS · ${dataset.title}`);
+    if (dataset.metadata) {
+      const metadataResponse = await fetch(dataset.metadata.url, { cache:"no-store" });
+      if (!metadataResponse.ok) throw new Error(`Could not read metadata (${metadataResponse.status})`);
+      state.metadata = parseCsv(await metadataResponse.text());
+      state.metadataTipColumn = state.metadata.headers.find(header => state.metadata.rows.some(row => state.tips.includes(row[header]))) || state.metadata.headers[0] || "";
+    }
+    ui["nas-dataset"].value = dataset.id; ui["share-dataset"].disabled = false; setDatasetQuery(dataset.id); renderMetadata();
+  } catch (error) {
+    state.nasDatasetId = ""; ui["share-dataset"].disabled = true; ui["tree-empty"].hidden = false; ui["tree-empty"].textContent = `Could not load NAS dataset: ${error.message || error}`;
+  } finally { ui["load-nas-dataset"].disabled = !ui["nas-dataset"].value; }
+}
+
+async function copyDatasetLink() {
+  if (!state.nasDatasetId) return;
+  const url = new URL(window.location.href); url.searchParams.set("dataset", state.nasDatasetId);
+  try { await navigator.clipboard.writeText(url.href); }
+  catch {
+    const input = document.createElement("textarea"); input.value = url.href; input.style.position = "fixed"; input.style.opacity = "0"; document.body.append(input); input.select(); document.execCommand("copy"); input.remove();
+  }
+  const button = ui["share-dataset"], original = button.textContent; button.textContent = "✓"; window.setTimeout(() => { button.textContent = original; },1000);
+}
+
+
+function setUploadStatus(message, warning = false) {
+  ui["upload-status"].textContent = message; ui["upload-status"].classList.toggle("warning", warning); ui["upload-status"].hidden = !message;
+}
+
+function encodedPath(path) { return path.split("/").filter(Boolean).map(part => encodeURIComponent(part)).join("/"); }
+
+async function uploadRaw(datasetId, kind, relative, file, token) {
+  const response = await fetch(`/api/admin/datasets/${encodeURIComponent(datasetId)}/files/${kind}/${encodedPath(relative)}`, { method:"PUT", headers:{ "X-PhyloPhoto-Token":token }, body:file });
+  if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error || `Upload failed (${response.status})`); }
+}
+
+async function uploadDataset() {
+  const datasetId = ui["upload-dataset-id"].value.trim(), title = ui["upload-dataset-title"].value.trim(), tree = ui["upload-tree-file"].files[0], metadata = ui["upload-metadata-file"].files[0], token = ui["upload-token"].value;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(datasetId)) return setUploadStatus("Dataset ID may contain only letters, numbers, dots, underscores, and hyphens.", true);
+  if (!tree) return setUploadStatus("Choose a tree file.", true);
+  if (!token) return setUploadStatus("Enter the upload token.", true);
+  const photoFiles = [...ui["upload-photo-folder"].files].filter(file => /\.(?:jpe?g|png|gif|webp|tiff?|bmp|avif|heic|heif)$/i.test(file.name));
+  const rootName = photoFiles[0]?.webkitRelativePath?.split("/")[0] || "";
+  const uploads = [{ kind:"tree",relative:tree.name,file:tree }];
+  if (metadata) uploads.push({ kind:"metadata",relative:metadata.name,file:metadata });
+  for (const file of photoFiles) {
+    const relative = file.webkitRelativePath.split("/").slice(rootName ? 1 : 0).join("/");
+    if (relative.includes("/")) uploads.push({ kind:"photos",relative,file });
+  }
+  ui["upload-dataset"].disabled = true; ui["upload-progress"].hidden = false; ui["upload-progress"].max = uploads.length; ui["upload-progress"].value = 0; setUploadStatus(`Preparing ${uploads.length} file(s)…`);
+  try {
+    const createResponse = await fetch(`/api/admin/datasets/${encodeURIComponent(datasetId)}`, { method:"POST", headers:{ "Content-Type":"application/json", "X-PhyloPhoto-Token":token }, body:JSON.stringify({ title:title || datasetId, tree:tree.name, metadata:metadata?.name || "" }) });
+    if (!createResponse.ok) { const payload = await createResponse.json().catch(() => ({})); throw new Error(payload.error || `Could not create dataset (${createResponse.status})`); }
+    let next = 0, completed = 0;
+    async function worker() {
+      while (next < uploads.length) {
+        const item = uploads[next++]; await uploadRaw(datasetId,item.kind,item.relative,item.file,token); completed += 1; ui["upload-progress"].value = completed; setUploadStatus(`Uploaded ${completed} of ${uploads.length} file(s)…`);
+      }
+    }
+    await Promise.all(Array.from({ length:Math.min(3,uploads.length) },worker));
+    setUploadStatus(`Upload complete: ${datasetId}`); await initNasDatasets(false); ui["nas-dataset"].value = datasetId; await loadNasDataset(datasetId);
+  } catch (error) { setUploadStatus(`Upload stopped: ${error.message || error}`, true); }
+  finally { ui["upload-dataset"].disabled = false; }
+}
+async function initNasDatasets(autoLoad = true) {
+  try {
+    const response = await fetch("/api/datasets", { cache:"no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const config = await fetchJson("/api/config");
+    ui["nas-upload-panel"].hidden = !config.uploadEnabled;
+    for (const id of ["nas-dataset","load-nas-dataset","share-dataset"]) ui[id].hidden = false;
+    ui["nas-dataset"].replaceChildren(new Option(payload.datasets?.length ? "NAS dataset" : "No NAS datasets", ""), ...(payload.datasets || []).map(dataset => new Option(dataset.title, dataset.id)));
+    const requested = new URL(window.location.href).searchParams.get("dataset");
+    if (autoLoad && requested && (payload.datasets || []).some(dataset => dataset.id === requested)) { ui["nas-dataset"].value = requested; await loadNasDataset(requested); }
+  } catch { /* Static/local-only hosting keeps the original controls unchanged. */ }
 }
 function clearTree() {
-  postViewer({ type:"phylophoto:clear" }); revokeImages(); Object.assign(state,{ loadId:0,loadedId:0,currentSettings:{},sourceTree:"",filename:"",parsedTree:null,tips:[],selectedTips:[],files:[],photoFolderHandle:null,folderIndex:new Map(),folderMatches:new Map(),metadata:null,metadataTipColumn:"",appliedRoot:null,pendingRootReport:null });
+  postViewer({ type:"phylophoto:clear" }); revokeImages(); Object.assign(state,{ loadId:0,loadedId:0,currentSettings:{},sourceTree:"",filename:"",parsedTree:null,tips:[],selectedTips:[],files:[],photoFolderHandle:null,nasDatasetId:"",folderIndex:new Map(),folderMatches:new Map(),metadata:null,metadataTipColumn:"",appliedRoot:null,pendingRootReport:null });
   ui["tree-empty"].replaceChildren(); const label = document.createElement("label"); label.className = "button primary"; label.htmlFor = "tree-file"; label.textContent = "Open a tree"; ui["tree-empty"].append(label); ui["tree-empty"].hidden = false;
   ui["photo-results"].replaceChildren(); ui["metadata-results"].replaceChildren(); ui["selection-summary"].textContent = ""; ui["tree-name"].textContent = ""; ui["photo-folder-name"].textContent = ""; ui["folder-warning-panel"].hidden = true; showStatus("");
   for (const id of ["tree-file","photo-folder","metadata-file","tip-search","outgroup-search","multiple-outgroups"]) ui[id].value = "";
   ui["tip-matches"].replaceChildren(); renderOutgroupPicker();
+  ui["share-dataset"].disabled = true; setDatasetQuery();
   for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip","refresh-photo-folder"]) ui[id].disabled = true;
 }
 function updateMatchingControls() { const rule = ui["match-rule"].value; ui["delimiter-wrap"].hidden = rule !== "prefix"; ui["prefix-count-wrap"].hidden = rule !== "prefix"; ui["regex-wrap"].hidden = rule !== "regex"; }
@@ -233,9 +348,12 @@ function startSplit(event) {
 }
 
 ui["tree-file"].addEventListener("change",event => loadTree(event.target.files[0]));
+ui["nas-dataset"].addEventListener("change",() => { ui["load-nas-dataset"].disabled = !ui["nas-dataset"].value; });
+ui["load-nas-dataset"].addEventListener("click",() => loadNasDataset(ui["nas-dataset"].value));
+ui["share-dataset"].addEventListener("click",copyDatasetLink);
 ui["choose-photo-folder"].addEventListener("click",choosePhotoFolder);
 ui["refresh-photo-folder"].addEventListener("click",refreshPhotoFolder);
-ui["photo-folder"].addEventListener("change",event => { state.photoFolderHandle = null; setPhotoFiles([...event.target.files], event.target.files[0]?.webkitRelativePath?.split("/")[0] || ""); });
+ui["photo-folder"].addEventListener("change",event => { leaveNasDataset(); state.photoFolderHandle = null; setPhotoFiles([...event.target.files], event.target.files[0]?.webkitRelativePath?.split("/")[0] || ""); });
 ui["metadata-file"].addEventListener("change",async event => { const file = event.target.files[0]; if (!file) return; state.metadata = parseCsv(await file.text()); state.metadataTipColumn = state.metadata.headers.find(header => state.metadata.rows.some(row => state.tips.includes(row[header]))) || state.metadata.headers[0] || ""; renderMetadata(); });
 ui["clear-tree"].addEventListener("click",clearTree);
 ui["select-tip"].addEventListener("click",() => { const name = ui["tip-search"].value.trim(); if (!state.tips.includes(name)) return showStatus(`Tip not found: ${name}`,true); requestPearTreeSelection([name]); showStatus(""); });
@@ -253,6 +371,7 @@ for (const id of ["match-rule","delimiter","prefix-count","match-regex","compari
 ui["rooting-mode"].addEventListener("change",updateRootingControls);
 ui["outgroup-search"].addEventListener("input", renderOutgroupPicker);
 ui["apply-root"].addEventListener("click",() => applyRoot()); ui.splitter.addEventListener("pointerdown",startSplit);
+ui["upload-dataset"].addEventListener("click",uploadDataset);
 ui.splitter.addEventListener("keydown",event => { if (!["ArrowLeft","ArrowRight"].includes(event.key)) return; event.preventDefault(); setPanelPercent(Math.min(75,Math.max(25,panelPercent() + (event.key === "ArrowRight" ? 2 : -2)))); saveUiPreferences(); });
 window.addEventListener("message",event => {
   if (event.origin !== window.location.origin || event.source !== ui["tree-viewer"].contentWindow) return;
@@ -282,4 +401,4 @@ window.addEventListener("message",event => {
   }
 });
 ui["tree-viewer"].addEventListener("load",() => postViewer({ type:"phylophoto:ping" }));
-window.addEventListener("beforeunload",revokeImages); restoreUiPreferences(); updateRootingControls(); postViewer({ type:"phylophoto:ping" });
+window.addEventListener("beforeunload",revokeImages); restoreUiPreferences(); updateRootingControls(); postViewer({ type:"phylophoto:ping" }); initNasDatasets();

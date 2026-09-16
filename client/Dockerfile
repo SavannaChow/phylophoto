@@ -1,5 +1,11 @@
-FROM nginx:1.27-alpine
+FROM python:3.12-alpine
 
-COPY . /usr/share/nginx/html
+WORKDIR /app
+COPY . /app
+
+ENV PHYLOPHOTO_DATA_ROOT=/data
+ENV PHYLOPHOTO_UPLOAD_ROOT=/uploads
 
 EXPOSE 80
+
+CMD ["python", "server.py"]

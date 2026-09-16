@@ -12,6 +12,7 @@ button,.button,summary { cursor: pointer; }
 h1 { margin: 0; font-size: 1.5rem; line-height: 1.15; white-space: nowrap; }
 #tree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .85rem; font-weight: 400; }
 .file-actions { display: flex; align-items: center; justify-content: flex-end; gap: .4rem; white-space: nowrap; }
+.file-actions select { min-height: 2rem; max-width: 13rem; border: 1px solid #94a3b8; border-radius: .38rem; padding: .28rem .45rem; background: var(--surface); }
 .button,button { display: inline-flex; align-items: center; justify-content: center; min-height: 2rem; border: 1px solid #94a3b8; border-radius: .38rem; padding: .28rem .58rem; background: var(--surface); text-decoration: none; }
 .icon-button { width: 2rem; padding: 0; font-size: 1.2rem; line-height: 1; }
 .button:hover,button:hover:not(:disabled) { border-color: var(--accent); }
@@ -63,6 +64,7 @@ fieldset legend { float: left; margin-right: .7rem; font-size: .86rem; }
 fieldset label { display: inline-flex !important; align-items: center; gap: .25rem !important; }
 .status { flex-basis: 100%; border-left: 3px solid var(--accent); padding: .45rem .6rem; background: var(--surface-soft); font-size: .86rem; white-space: pre-wrap; }
 .status.warning { border-color: #d97706; background: var(--warning-bg); color: var(--warning-text); }
+#upload-progress { flex-basis: 100%; width: 100%; }
 .table-wrap { max-width: 100%; overflow: auto; padding: 0 .65rem .65rem; }
 table { width: 100%; border-collapse: collapse; font-size: .83rem; }
 th,td { padding: .35rem .45rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }

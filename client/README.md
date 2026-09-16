@@ -1,33 +1,87 @@
-# PhyloPhoto client-side edition
+# PhyloPhoto browser + NAS sharing
 
-A static, browser-local edition of Phylogeny photo browser. Its layout and panel dimensions are taken from the known-good `4e34ce9` Streamlit/PearTree edition: a compact title bar, full-height tree and photo panels, draggable divider, and collapsed controls below the panels.
+This edition preserves the browser-local workflow from `05ecfe1` and adds optional NAS datasets and share links. PearTree remains isolated in its iframe, and the tree/photo layout, local file controls, rooting, node matching, and visual options are unchanged.
 
-PearTree runs inside the same isolated iframe structure used by `4e34ce9`. This prevents PearTree's bundled styles from changing the surrounding application layout and ensures the tree is initialized in an already-visible, full-height panel.
+## Two data modes
 
-## Privacy model
+### Browser-local mode
 
-- Synology serves only HTML, JavaScript, CSS, and the vendored PearTree bundle.
-- The selected tree and photo folder are read by the browser and are never uploaded or written to the server.
-- Photos are displayed from temporary browser object URLs and are released when the selection changes or the tab closes.
-- PearTree visual settings are stored in the browser localStorage for this site, not on the server.
+Use **Open tree** and **Photo folder** exactly as before. The selected local files stay in that browser tab and are never sent to the server.
 
-## Use
+### NAS dataset mode
 
-1. Open the site and choose a Newick or NEXUS tree with **Open tree**.
-2. Choose the local root folder that contains one direct subfolder per tip with **Photo folder**.
-3. Click a PearTree tip or internal node. The right panel displays matching photos vertically.
-4. Use PearTree native toolbar/palette for bootstrap labels, zoom, and visual settings. The collapsed controls below the panels also provide searchable tip selection, Original/Proportional/Equal display modes, folder matching, and outgroup or midpoint rooting.
+Docker reads an existing NAS data directory through a read-only mount. The browser downloads only the selected tree, a list of photo filenames, and photos that are actually displayed. It does not copy the photo library into Docker.
 
-The directory picker is a browser capability. Use a current Chromium browser (Chrome, Edge, or Arc) for the most reliable folder selection. A browser directory selection is read-only, so this edition warns about missing folders but does not create them.
+Each analysis has a stable dataset ID. Selecting a NAS dataset enables the link button. A link such as the following automatically loads the same tree and photo library for anyone who can reach that Synology service:
+
+```text
+http://SYNOLOGY_IP:8502/?dataset=analysis-2026-a
+```
+
+## NAS directory layout
+
+The simplest layout needs no configuration file when there is exactly one tree file:
+
+```text
+/volume1/docker/phylophoto/data/
+└── datasets/
+    └── analysis-2026-a/
+        ├── analysis.tree
+        └── photos/
+            ├── Full_tip_label_A/
+            │   ├── photo1.jpg
+            │   └── photo2.jpg
+            └── Full_tip_label_B/
+                └── photo1.jpg
+```
+
+For an explicit title, metadata, or paths, add `dataset.json` inside the analysis directory:
+
+```json
+{
+  "title": "Acropora analysis 2026 A",
+  "tree": "analysis.tree",
+  "photos": "photos",
+  "metadata": "metadata.csv"
+}
+```
+
+Paths are relative to the dataset directory and must remain inside the mounted data root. Separate analysis directories can use different trees and photo libraries. They can also reference a shared photo library with a relative path such as `../../shared-photos/acropora`, provided the target remains inside the mounted data root.
+
+## Optional browser upload
+
+Large photo libraries should normally be copied directly on the NAS and mounted read-only. Browser upload is available as a fallback and writes only to a separate upload directory, never to the read-only library.
+
+Create `client/.env` on the NAS:
+
+```dotenv
+PHYLOPHOTO_DATA_PATH=/volume1/docker/phylophoto/data
+PHYLOPHOTO_UPLOAD_PATH=/volume1/docker/phylophoto/uploads
+PHYLOPHOTO_UPLOAD_TOKEN=replace-with-a-long-private-token
+```
+
+When a token is configured, the collapsed **Upload dataset to NAS** panel appears. It uploads the tree, optional metadata, and photo folder into `uploads/datasets/<dataset-id>/`. Keep the token private; people using shared read-only links do not need it.
+
+Uploads are streamed one file at a time with three concurrent transfers. They are practical on the local network, but directly placing very large libraries on the NAS remains faster and more reliable.
 
 ## Synology Docker
 
-From this client directory on the NAS:
+From the repository's client directory on the NAS:
 
 ```bash
+cd /volume1/docker/phylophoto/client
 docker compose up -d --build
+docker compose logs --tail=50 phylophoto-client
 ```
 
-Then open `http://SYNOLOGY_IP:8502`.
+Open `http://SYNOLOGY_IP:8502`.
 
-The original Streamlit deployment remains at the repository root and port 8501. This client edition is separate and does not need a photo volume mount.
+The service is stateless for viewers: multiple tabs and multiple people can view different datasets simultaneously. Browser-local trees and folders remain private to each tab. A shared NAS link is reachable only by people who can access the NAS through the same LAN, VPN/Tailscale, or a separately configured HTTPS reverse proxy.
+
+## Security boundaries
+
+- The main NAS data mount is read-only.
+- Uploaded files use a separate writable mount and require the upload token.
+- Dataset IDs and file paths are validated against path traversal.
+- Dataset links allow viewing; they do not contain the upload token.
+- PearTree visual settings remain browser-local and are not included in shared dataset links.

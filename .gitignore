@@ -6,3 +6,8 @@ __pycache__/
 
 # User-supplied sample photos stay local and are never committed.
 sample_photos/
+
+# NAS datasets, browser uploads, and private deployment settings.
+client/.env
+client/data/
+client/uploads/
