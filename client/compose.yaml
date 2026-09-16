@@ -8,7 +8,6 @@ services:
     environment:
       PHYLOPHOTO_DATA_ROOT: /data
       PHYLOPHOTO_UPLOAD_ROOT: /uploads
-      PHYLOPHOTO_UPLOAD_TOKEN: ${PHYLOPHOTO_UPLOAD_TOKEN:-}
     volumes:
       - ${PHYLOPHOTO_DATA_PATH:-./data}:/data:ro
       - ${PHYLOPHOTO_UPLOAD_PATH:-./uploads}:/uploads

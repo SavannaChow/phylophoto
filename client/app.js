@@ -3,7 +3,7 @@
 import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseCsv, parseNewick, transformBranchLengths } from "./core.js";
 
 const byId = id => document.getElementById(id);
-const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","nas-dataset","load-nas-dataset","share-dataset","nas-upload-panel","upload-dataset-id","upload-dataset-title","upload-tree-file","upload-photo-folder","upload-metadata-file","upload-token","upload-dataset","upload-progress","upload-status","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count-wrap","prefix-count","regex-wrap","match-regex","comparison-mode","case-sensitive","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
+const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","nas-dataset","load-nas-dataset","share-dataset","nas-upload-panel","upload-dataset-id","upload-dataset-title","upload-tree-file","upload-photo-folder","upload-metadata-file","upload-dataset","upload-progress","upload-status","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count-wrap","prefix-count","regex-wrap","match-regex","comparison-mode","case-sensitive","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
 const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
 const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, nasDatasetId: "", folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null };
 
@@ -278,16 +278,15 @@ function setUploadStatus(message, warning = false) {
 
 function encodedPath(path) { return path.split("/").filter(Boolean).map(part => encodeURIComponent(part)).join("/"); }
 
-async function uploadRaw(datasetId, kind, relative, file, token) {
-  const response = await fetch(`/api/admin/datasets/${encodeURIComponent(datasetId)}/files/${kind}/${encodedPath(relative)}`, { method:"PUT", headers:{ "X-PhyloPhoto-Token":token }, body:file });
+async function uploadRaw(datasetId, kind, relative, file) {
+  const response = await fetch(`/api/admin/datasets/${encodeURIComponent(datasetId)}/files/${kind}/${encodedPath(relative)}`, { method:"PUT", body:file });
   if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error || `Upload failed (${response.status})`); }
 }
 
 async function uploadDataset() {
-  const datasetId = ui["upload-dataset-id"].value.trim(), title = ui["upload-dataset-title"].value.trim(), tree = ui["upload-tree-file"].files[0], metadata = ui["upload-metadata-file"].files[0], token = ui["upload-token"].value;
+  const datasetId = ui["upload-dataset-id"].value.trim(), title = ui["upload-dataset-title"].value.trim(), tree = ui["upload-tree-file"].files[0], metadata = ui["upload-metadata-file"].files[0];
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(datasetId)) return setUploadStatus("Dataset ID may contain only letters, numbers, dots, underscores, and hyphens.", true);
   if (!tree) return setUploadStatus("Choose a tree file.", true);
-  if (!token) return setUploadStatus("Enter the upload token.", true);
   const photoFiles = [...ui["upload-photo-folder"].files].filter(file => /\.(?:jpe?g|png|gif|webp|tiff?|bmp|avif|heic|heif)$/i.test(file.name));
   const rootName = photoFiles[0]?.webkitRelativePath?.split("/")[0] || "";
   const uploads = [{ kind:"tree",relative:tree.name,file:tree }];
@@ -298,12 +297,12 @@ async function uploadDataset() {
   }
   ui["upload-dataset"].disabled = true; ui["upload-progress"].hidden = false; ui["upload-progress"].max = uploads.length; ui["upload-progress"].value = 0; setUploadStatus(`Preparing ${uploads.length} file(s)…`);
   try {
-    const createResponse = await fetch(`/api/admin/datasets/${encodeURIComponent(datasetId)}`, { method:"POST", headers:{ "Content-Type":"application/json", "X-PhyloPhoto-Token":token }, body:JSON.stringify({ title:title || datasetId, tree:tree.name, metadata:metadata?.name || "" }) });
+    const createResponse = await fetch(`/api/admin/datasets/${encodeURIComponent(datasetId)}`, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ title:title || datasetId, tree:tree.name, metadata:metadata?.name || "" }) });
     if (!createResponse.ok) { const payload = await createResponse.json().catch(() => ({})); throw new Error(payload.error || `Could not create dataset (${createResponse.status})`); }
     let next = 0, completed = 0;
     async function worker() {
       while (next < uploads.length) {
-        const item = uploads[next++]; await uploadRaw(datasetId,item.kind,item.relative,item.file,token); completed += 1; ui["upload-progress"].value = completed; setUploadStatus(`Uploaded ${completed} of ${uploads.length} file(s)…`);
+        const item = uploads[next++]; await uploadRaw(datasetId,item.kind,item.relative,item.file); completed += 1; ui["upload-progress"].value = completed; setUploadStatus(`Uploaded ${completed} of ${uploads.length} file(s)…`);
       }
     }
     await Promise.all(Array.from({ length:Math.min(3,uploads.length) },worker));
@@ -316,8 +315,7 @@ async function initNasDatasets(autoLoad = true) {
     const response = await fetch("/api/datasets", { cache:"no-store" });
     if (!response.ok) return;
     const payload = await response.json();
-    const config = await fetchJson("/api/config");
-    ui["nas-upload-panel"].hidden = !config.uploadEnabled;
+    ui["nas-upload-panel"].hidden = false;
     for (const id of ["nas-dataset","load-nas-dataset","share-dataset"]) ui[id].hidden = false;
     ui["nas-dataset"].replaceChildren(new Option(payload.datasets?.length ? "NAS dataset" : "No NAS datasets", ""), ...(payload.datasets || []).map(dataset => new Option(dataset.title, dataset.id)));
     const requested = new URL(window.location.href).searchParams.get("dataset");

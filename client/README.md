@@ -50,17 +50,16 @@ Paths are relative to the dataset directory and must remain inside the mounted d
 
 ## Optional browser upload
 
-Large photo libraries should normally be copied directly on the NAS and mounted read-only. Browser upload is available as a fallback and writes only to a separate upload directory, never to the read-only library.
+Each named analysis folder is one dataset: it contains that analysis's tree and its `photos/` folder. There is no extra category hierarchy. Large photo libraries should normally be copied directly into the NAS shared data folder and mounted read-only. Browser upload is available as a simpler fallback and writes only to a separate upload directory, never to the read-only library.
 
 Create `client/.env` on the NAS:
 
 ```dotenv
 PHYLOPHOTO_DATA_PATH=/volume1/docker/phylophoto/data
 PHYLOPHOTO_UPLOAD_PATH=/volume1/docker/phylophoto/uploads
-PHYLOPHOTO_UPLOAD_TOKEN=replace-with-a-long-private-token
 ```
 
-When a token is configured, the collapsed **Upload dataset to NAS** panel appears. It uploads the tree, optional metadata, and photo folder into `uploads/datasets/<dataset-id>/`. Keep the token private; people using shared read-only links do not need it.
+The collapsed **Upload dataset to NAS** panel is always available when the NAS service is running. Enter a new dataset name, choose its tree and photo folder, then upload. It creates `uploads/datasets/<dataset-id>/` for that analysis. Existing NAS analysis folders appear in the same selector and can be loaded directly.
 
 Uploads are streamed one file at a time with three concurrent transfers. They are practical on the local network, but directly placing very large libraries on the NAS remains faster and more reliable.
 
@@ -81,7 +80,7 @@ The service is stateless for viewers: multiple tabs and multiple people can view
 ## Security boundaries
 
 - The main NAS data mount is read-only.
-- Uploaded files use a separate writable mount and require the upload token.
+- Uploaded files use a separate writable mount.
 - Dataset IDs and file paths are validated against path traversal.
-- Dataset links allow viewing; they do not contain the upload token.
+- This deployment has no login: anyone who can reach the NAS service can view datasets and upload a dataset. Keep it inside a trusted LAN/VPN or protect it with your reverse proxy/firewall.
 - PearTree visual settings remain browser-local and are not included in shared dataset links.

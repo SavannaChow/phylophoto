@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
-import secrets
 import re
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -15,7 +14,6 @@ from urllib.parse import quote, unquote, urlparse
 
 CLIENT_ROOT = Path(__file__).resolve().parent
 UPLOAD_ROOT = Path(os.environ.get("PHYLOPHOTO_UPLOAD_ROOT", "/uploads")).resolve()
-UPLOAD_TOKEN = os.environ.get("PHYLOPHOTO_UPLOAD_TOKEN", "")
 DATA_ROOT = Path(os.environ.get("PHYLOPHOTO_DATA_ROOT", "/data")).resolve()
 DATASET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 TREE_EXTENSIONS = {".nwk", ".newick", ".tree", ".tre", ".nex", ".nexus"}
@@ -161,11 +159,6 @@ class Handler(SimpleHTTPRequestHandler):
                 self.copyfile(source, self.wfile)
 
 
-    def require_upload_access(self) -> None:
-        supplied = self.headers.get("X-PhyloPhoto-Token", "")
-        if not UPLOAD_TOKEN or not secrets.compare_digest(supplied, UPLOAD_TOKEN):
-            raise PermissionError("Upload access denied")
-
     def read_json_body(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0 or length > 65536:
@@ -176,7 +169,6 @@ class Handler(SimpleHTTPRequestHandler):
             raise DatasetError("Invalid JSON request") from exc
 
     def create_upload_dataset(self, dataset_id: str) -> None:
-        self.require_upload_access()
         if not DATASET_ID.fullmatch(dataset_id):
             raise DatasetError("Invalid dataset id")
         if (DATA_ROOT / "datasets" / dataset_id).resolve().is_dir():
@@ -200,7 +192,6 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"id": dataset_id}, HTTPStatus.CREATED)
 
     def upload_file(self, dataset_id: str, kind: str, relative: str) -> None:
-        self.require_upload_access()
         if not DATASET_ID.fullmatch(dataset_id):
             raise DatasetError("Invalid dataset id")
         dataset_dir = (UPLOAD_ROOT / "datasets" / dataset_id).resolve()
@@ -236,9 +227,6 @@ class Handler(SimpleHTTPRequestHandler):
             if temporary.exists(): temporary.unlink()
         self.send_response(HTTPStatus.NO_CONTENT); self.end_headers()
     def api(self, path: str) -> bool:
-        if path == "/api/config":
-            self.send_json({"uploadEnabled": bool(UPLOAD_TOKEN)})
-            return True
         if path == "/api/datasets":
             datasets, errors = discover_datasets()
             self.send_json({"datasets": datasets, "errors": errors})
@@ -289,8 +277,6 @@ class Handler(SimpleHTTPRequestHandler):
             if self.command == "PUT" and match:
                 self.upload_file(unquote(match.group(1)), match.group(2), match.group(3)); return
             self.send_json({"error": "Upload endpoint not found"}, HTTPStatus.NOT_FOUND)
-        except PermissionError as exc:
-            self.send_json({"error": str(exc)}, HTTPStatus.FORBIDDEN)
         except DatasetError as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
         except OSError as exc:
