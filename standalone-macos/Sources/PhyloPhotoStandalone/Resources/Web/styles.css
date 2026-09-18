@@ -91,7 +91,7 @@ h1 { font-size: 1rem; font-weight: 600; letter-spacing: -.01em; }
 .button:active,button:active:not(:disabled) { transform: none; background: #e8e8e8; }
 .button.primary,button.primary { background: #202123; color: #fff; box-shadow: none; }
 .button.primary:hover,button.primary:hover:not(:disabled) { background: #2f3032; }
-#workspace { grid-template-columns: minmax(300px,56fr) 1px minmax(300px,44fr); }
+#workspace { grid-template-columns: minmax(160px,56fr) 1px minmax(220px,44fr); }
 .panel { border: 0; border-radius: 0; background: #fff; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 #tree-panel { border-right: 0; }
 #photo-panel { padding: .75rem .9rem; }

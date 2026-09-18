@@ -18,7 +18,8 @@ function matchingOptions() {
   return { rule: ui["match-rule"].value, delimiter: ui.delimiter.value, fieldCount: Number(ui["prefix-count"].value), pattern: ui["match-regex"].value, comparison: ui["comparison-mode"].value, caseSensitive: ui["case-sensitive"].checked };
 }
 function panelPercent() { const width = ui.workspace.getBoundingClientRect().width; return width ? ui["tree-panel"].getBoundingClientRect().width / width * 100 : 56; }
-function setPanelPercent(percent) { ui.workspace.style.gridTemplateColumns = `minmax(300px,${percent}fr) 10px minmax(300px,${100 - percent}fr)`; ui.splitter.setAttribute("aria-valuenow", Math.round(percent)); }
+function panelPercentLimits() { const width = ui.workspace.getBoundingClientRect().width, divider = ui.splitter.getBoundingClientRect().width || 1, usable = Math.max(1,width - divider); return { min:160 / usable * 100, max:100 - 220 / usable * 100 }; }
+function setPanelPercent(percent) { const limits = panelPercentLimits(), value = Math.min(limits.max,Math.max(limits.min,Number(percent) || 56)); ui.workspace.style.gridTemplateColumns = `minmax(160px,${value}fr) 1px minmax(220px,${100 - value}fr)`; ui.splitter.setAttribute("aria-valuemin", Math.round(limits.min)); ui.splitter.setAttribute("aria-valuemax", Math.round(limits.max)); ui.splitter.setAttribute("aria-valuenow", Math.round(value)); }
 function drawerWidthLimit() { return { min:320, max:Math.max(320,Math.floor(window.innerWidth * 2 / 3)) }; }
 function setDrawerWidth(width) { const limits = drawerWidthLimit(), value = Math.round(Math.min(limits.max,Math.max(limits.min,Number(width) || Math.round(window.innerWidth / 2)))); document.documentElement.style.setProperty("--settings-drawer-width", `${value}px`); ui["drawer-resizer"].setAttribute("aria-valuemin", limits.min); ui["drawer-resizer"].setAttribute("aria-valuemax", limits.max); ui["drawer-resizer"].setAttribute("aria-valuenow", value); }
 function currentDrawerWidth() { return Math.round(ui["settings-drawer"].getBoundingClientRect().width); }
@@ -26,7 +27,7 @@ function saveUiPreferences() { localStorage.setItem("phylophoto-client-ui", JSON
 function restoreUiPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem("phylophoto-client-ui") || "{}"), matching = saved.matching || {};
-    if (saved.panel >= 25 && saved.panel <= 75) setPanelPercent(saved.panel);
+    if (saved.panel > 0 && saved.panel < 100) setPanelPercent(saved.panel);
     if (Number(saved.drawerWidth) > 0) setDrawerWidth(saved.drawerWidth);
     const migrateLegacyDefault = saved.matchingDefaultsVersion !== 2 && matching.rule === "full" && matching.comparison === "equals";
     if (migrateLegacyDefault) { ui["match-rule"].value = "prefix"; ui["comparison-mode"].value = "starts"; }
@@ -263,10 +264,18 @@ function updateRootingControls() {
   renderOutgroupPicker();
 }
 function startSplit(event) {
-  event.preventDefault(); ui.splitter.classList.add("dragging"); document.body.classList.add("dragging");
-  const move = moveEvent => { const rect = ui.workspace.getBoundingClientRect(); setPanelPercent(Math.min(75,Math.max(25,(moveEvent.clientX - rect.left) / rect.width * 100))); };
-  const stop = () => { ui.splitter.classList.remove("dragging"); document.body.classList.remove("dragging"); window.removeEventListener("pointermove",move); saveUiPreferences(); window.dispatchEvent(new Event("resize")); };
-  window.addEventListener("pointermove",move); window.addEventListener("pointerup",stop,{ once:true });
+  if (event.button !== 0) return;
+  event.preventDefault(); const splitter = ui.splitter; splitter.classList.add("dragging"); document.body.classList.add("dragging"); splitter.setPointerCapture?.(event.pointerId);
+  const move = moveEvent => { const rect = ui.workspace.getBoundingClientRect(); setPanelPercent((moveEvent.clientX - rect.left) / rect.width * 100); };
+  let finished = false;
+  const stop = () => {
+    if (finished) return; finished = true;
+    splitter.classList.remove("dragging"); document.body.classList.remove("dragging"); window.removeEventListener("pointermove",move);
+    splitter.removeEventListener("pointerup",stop); splitter.removeEventListener("pointercancel",stop); splitter.removeEventListener("lostpointercapture",stop);
+    if (splitter.hasPointerCapture?.(event.pointerId)) splitter.releasePointerCapture(event.pointerId);
+    saveUiPreferences(); window.dispatchEvent(new Event("resize"));
+  };
+  window.addEventListener("pointermove",move); splitter.addEventListener("pointerup",stop,{ once:true }); splitter.addEventListener("pointercancel",stop,{ once:true }); splitter.addEventListener("lostpointercapture",stop,{ once:true });
 }
 function startDrawerResize(event) {
   event.preventDefault(); document.body.classList.add("drawer-resizing");
@@ -309,7 +318,7 @@ ui["create-tip-folders"].addEventListener("click",() => {
   if (window.confirm(`Create missing folders for ${state.tips.length} tree tip(s) in the selected photo folder?`)) nativePost("createMissingTipFolders", { tips: state.tips });
 });
 ui["lazy-photo-loading"].addEventListener("change",() => { saveUiPreferences(); renderPhotos(); });
-ui.splitter.addEventListener("keydown",event => { if (!["ArrowLeft","ArrowRight"].includes(event.key)) return; event.preventDefault(); setPanelPercent(Math.min(75,Math.max(25,panelPercent() + (event.key === "ArrowRight" ? 2 : -2)))); saveUiPreferences(); });
+ui.splitter.addEventListener("keydown",event => { if (!["ArrowLeft","ArrowRight"].includes(event.key)) return; event.preventDefault(); setPanelPercent(panelPercent() + (event.key === "ArrowRight" ? 2 : -2)); saveUiPreferences(); });
 window.addEventListener("message",event => {
   if (event.origin !== window.location.origin || event.source !== ui["tree-viewer"].contentWindow) return;
   const message = event.data || {};
