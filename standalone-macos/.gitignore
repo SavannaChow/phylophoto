@@ -1,0 +1,3 @@
+.build/
+.swift-cache/
+dist/

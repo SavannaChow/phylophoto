@@ -1,0 +1,337 @@
+"use strict";
+
+import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseCsv, parseNewick, transformBranchLengths } from "./core.js";
+
+const byId = id => document.getElementById(id);
+const ids = ["tree-file","choose-tree","open-tree-empty","photo-folder","choose-photo-folder","refresh-photo-folder","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","comparison-mode","case-sensitive","lazy-photo-loading","create-tip-folders","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
+const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
+const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], photoObserver: null, metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null };
+
+function nativePost(action, payload = {}) {
+  const handler = window.webkit?.messageHandlers?.phylophotoNative;
+  if (!handler) return false;
+  handler.postMessage({ action, ...payload });
+  return true;
+}
+
+function matchingOptions() {
+  return { rule: ui["match-rule"].value, delimiter: ui.delimiter.value, fieldCount: Number(ui["prefix-count"].value), pattern: ui["match-regex"].value, comparison: ui["comparison-mode"].value, caseSensitive: ui["case-sensitive"].checked };
+}
+function panelPercent() { const width = ui.workspace.getBoundingClientRect().width; return width ? ui["tree-panel"].getBoundingClientRect().width / width * 100 : 56; }
+function setPanelPercent(percent) { ui.workspace.style.gridTemplateColumns = `minmax(300px,${percent}fr) 10px minmax(300px,${100 - percent}fr)`; ui.splitter.setAttribute("aria-valuenow", Math.round(percent)); }
+function saveUiPreferences() { localStorage.setItem("phylophoto-client-ui", JSON.stringify({ panel: panelPercent(), matching: matchingOptions(), lazyPhotoLoading: ui["lazy-photo-loading"].checked })); }
+function restoreUiPreferences() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("phylophoto-client-ui") || "{}"), matching = saved.matching || {};
+    if (saved.panel >= 25 && saved.panel <= 75) setPanelPercent(saved.panel);
+    if (["full","prefix","regex"].includes(matching.rule)) ui["match-rule"].value = matching.rule;
+    if (typeof matching.delimiter === "string") ui.delimiter.value = matching.delimiter;
+    if (Number(matching.fieldCount) >= 1) ui["prefix-count"].value = matching.fieldCount;
+    if (typeof matching.pattern === "string") ui["match-regex"].value = matching.pattern;
+    if (["equals","starts"].includes(matching.comparison)) ui["comparison-mode"].value = matching.comparison;
+    ui["case-sensitive"].checked = Boolean(matching.caseSensitive); ui["lazy-photo-loading"].checked = Boolean(saved.lazyPhotoLoading);
+  } catch { localStorage.removeItem("phylophoto-client-ui"); }
+  updateMatchingControls();
+}
+function showStatus(message, warning = false) { ui["rooting-status"].textContent = message; ui["rooting-status"].classList.toggle("warning", warning); ui["rooting-status"].hidden = !message; }
+function revokeImages() { state.photoObserver?.disconnect(); state.photoObserver = null; state.imageUrls.forEach(URL.revokeObjectURL); state.imageUrls = []; }
+
+function setPhotoFiles(files, folderName = "") {
+  state.files = files;
+  state.folderIndex = buildFolderIndex(files);
+  ui["photo-folder-name"].textContent = folderName;
+  ui["refresh-photo-folder"].disabled = !state.photoFolderHandle;
+  ui["create-tip-folders"].disabled = !files.length || !state.tips.length;
+  updateFolderMatches();
+}
+
+async function filesFromDirectory(handle, path = handle.name) {
+  const files = [];
+  for await (const entry of handle.values()) {
+    const entryPath = `${path}/${entry.name}`;
+    if (entry.kind === "directory") files.push(...await filesFromDirectory(entry, entryPath));
+    else {
+      const source = await entry.getFile();
+      const file = new File([source], source.name, { type: source.type, lastModified: source.lastModified });
+      Object.defineProperty(file, "webkitRelativePath", { value: entryPath });
+      files.push(file);
+    }
+  }
+  return files;
+}
+
+async function choosePhotoFolder() {
+  if (nativePost("choosePhotoFolder")) return;
+  if (!window.showDirectoryPicker) { ui["photo-folder"].click(); return; }
+  try {
+    const handle = await window.showDirectoryPicker({ mode: "read" });
+    state.photoFolderHandle = handle;
+    setPhotoFiles(await filesFromDirectory(handle), handle.name);
+  } catch (error) {
+    if (error?.name !== "AbortError") showStatus(`Could not read photo folder: ${error.message || error}`, true);
+  }
+}
+
+async function refreshPhotoFolder() {
+  if (nativePost("refreshPhotoFolder")) return;
+  if (!state.photoFolderHandle) return;
+  try {
+    const permission = await state.photoFolderHandle.queryPermission({ mode: "read" });
+    if (permission !== "granted" && await state.photoFolderHandle.requestPermission({ mode: "read" }) !== "granted") throw new Error("Permission to read this photo folder was not granted.");
+    setPhotoFiles(await filesFromDirectory(state.photoFolderHandle), state.photoFolderHandle.name);
+  } catch (error) { showStatus(`Could not refresh photo folder: ${error.message || error}`, true); }
+}
+
+function updateFolderMatches() {
+  try {
+    const matches = matchFolders(state.tips, state.folderIndex, matchingOptions());
+    state.folderMatches = new Map(matches.map(match => [match.tip, match]));
+    const warnings = matches.filter(match => match.status !== "matched");
+    ui["folder-warning-panel"].hidden = !state.files.length;
+    ui["folder-warning-summary"].textContent = `Folder warnings (${warnings.length})`;
+    ui["folder-warning-rows"].replaceChildren(...warnings.map(match => {
+      const row = document.createElement("tr");
+      [match.tip,match.key,match.status,match.candidates.join(", ")].forEach(value => { const cell = document.createElement("td"); cell.textContent = value; row.append(cell); });
+      return row;
+    }));
+    renderPhotos(); saveUiPreferences();
+  } catch (error) { ui["folder-warning-panel"].hidden = false; ui["folder-warning-summary"].textContent = `Folder matching error — ${error.message || error}`; }
+}
+
+function renderMetadata() {
+  ui["metadata-results"].replaceChildren();
+  if (!state.metadata || !state.selectedTips.length || !state.metadataTipColumn) { ui["metadata-results"].hidden = true; return; }
+  const rows = state.metadata.rows.filter(row => state.selectedTips.includes(row[state.metadataTipColumn]));
+  if (!rows.length) { ui["metadata-results"].hidden = true; return; }
+  const fragment = byId("metadata-table-template").content.cloneNode(true);
+  fragment.querySelector("summary").textContent = `Metadata rows (${rows.length})`;
+  const headRow = document.createElement("tr");
+  state.metadata.headers.forEach(header => { const th = document.createElement("th"); th.textContent = header; headRow.append(th); });
+  fragment.querySelector("thead").append(headRow);
+  rows.forEach(data => { const tr = document.createElement("tr"); state.metadata.headers.forEach(header => { const td = document.createElement("td"); td.textContent = data[header]; tr.append(td); }); fragment.querySelector("tbody").append(tr); });
+  ui["metadata-results"].append(fragment); ui["metadata-results"].hidden = false;
+}
+
+function renderPhotos() {
+  revokeImages(); ui["photo-results"].replaceChildren();
+  const progressive = ui["lazy-photo-loading"].checked && "IntersectionObserver" in window;
+  if (progressive) {
+    state.photoObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const image = entry.target;
+        image.src = image.dataset.source;
+        delete image.dataset.source;
+        state.photoObserver?.unobserve(image);
+      });
+    }, { root: ui["photo-panel"], rootMargin:"240px 0px" });
+  }
+  ui["selection-summary"].textContent = state.selectedTips.length === 1 ? `Tip — ${state.selectedTips[0]}` : state.selectedTips.length ? `Selected node — ${state.selectedTips.length} descendant tips` : "";
+  renderMetadata();
+  if (!state.selectedTips.length || !state.files.length) return;
+  let count = 0;
+  for (const tip of state.selectedTips) {
+    const match = state.folderMatches.get(tip), files = match?.folder ? state.folderIndex.get(match.folder) || [] : [];
+    if (!files.length) continue;
+    count += files.length;
+    const article = byId("photo-group-template").content.firstElementChild.cloneNode(true); article.querySelector("h2").textContent = tip;
+    const stack = article.querySelector(".photo-stack");
+    for (const file of files) {
+      const figure = document.createElement("figure"), image = document.createElement("img"), caption = document.createElement("figcaption");
+      const url = file.url || URL.createObjectURL(file);
+      if (!file.url) state.imageUrls.push(url); if (progressive) { image.dataset.source = url; state.photoObserver.observe(image); } else image.src = url; image.alt = file.name; caption.textContent = file.relativePath || file.webkitRelativePath || file.name; figure.append(image,caption); stack.append(figure);
+    }
+    ui["photo-results"].append(article);
+  }
+  if (!count) { const note = document.createElement("p"); note.className = "empty-note"; note.textContent = "No photos in the matched folder."; ui["photo-results"].append(note); }
+}
+function setSelection(names) { state.selectedTips = [...new Set((Array.isArray(names) ? names : []).filter(name => state.tips.includes(name)))]; renderPhotos(); }
+function postViewer(message) { ui["tree-viewer"].contentWindow?.postMessage(message,window.location.origin); }
+function requestPearTreeSelection(names) { if (!state.viewerReady) return; postViewer({ type:"phylophoto:select",tips:names || [] }); setSelection(names || []); }
+function renderTipMatches() {
+  const search = ui["tip-search"].value.trim().toLocaleLowerCase();
+  const matches = search ? state.tips.filter(name => name.toLocaleLowerCase().includes(search)).slice(0, 12) : [];
+  ui["tip-matches"].replaceChildren(...matches.map(name => {
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "outgroup-match"; button.textContent = name; button.setAttribute("role", "option");
+    button.addEventListener("click", () => { ui["tip-search"].value = name; ui["tip-matches"].replaceChildren(); requestPearTreeSelection([name]); showStatus(""); });
+    return button;
+  }));
+}
+
+function currentRootRequest() {
+  const mode = ui["rooting-mode"].value;
+  if (mode === "original" || mode === "midpoint") return { mode, names: [] };
+  const selected = selectedOutgroups();
+  const names = selected.length ? selected : [ui["outgroup-search"].value.trim()].filter(Boolean);
+  return { mode, names: [...new Set(names)] };
+}
+
+function selectedOutgroups() { return [...new Set(ui["multiple-outgroups"].value.split(/[\n,]+/).map(value => value.trim()).filter(Boolean))]; }
+function setOutgroups(names) { ui["multiple-outgroups"].value = [...new Set(names)].join("\n"); }
+function renderOutgroupPicker() {
+  const mode = ui["rooting-mode"].value;
+  const search = ui["outgroup-search"].value;
+  const matches = search.trim() ? state.tips.filter(name => name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())).slice(0, 12) : [];
+  ui["outgroup-matches"].replaceChildren(...matches.map(name => {
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "outgroup-match"; button.textContent = name; button.setAttribute("role", "option");
+    button.addEventListener("click", () => {
+      setOutgroups(mode === "single" ? [name] : [...selectedOutgroups(), name]);
+      renderOutgroupPicker();
+    });
+    return button;
+  }));
+  ui["outgroup-selected"].replaceChildren(...selectedOutgroups().map(name => {
+    const chip = document.createElement("span"); chip.className = "outgroup-chip";
+    const text = document.createElement("span"); text.textContent = name;
+    const remove = document.createElement("button"); remove.type = "button"; remove.setAttribute("aria-label", `Remove ${name}`); remove.textContent = "×";
+    remove.addEventListener("click", () => {
+      setOutgroups(selectedOutgroups().filter(value => value !== name));
+      renderOutgroupPicker();
+    });
+    chip.append(text, remove); return chip;
+  }));
+}
+async function applyRoot(request = currentRootRequest(), report = true) {
+  if (!state.viewerReady || !state.sourceTree) return;
+  try {
+    if (request.mode === "original") { state.appliedRoot = null; await mountTree(); if (report) showStatus("Restored the originally loaded root."); return; }
+    if (request.mode === "midpoint") { state.appliedRoot = request; state.pendingRootReport = report ? { message:"PearTree applied midpoint rooting.",warning:false } : null; postViewer({ type:"phylophoto:root",request }); return; }
+    const names = request.names, missing = names.filter(name => !state.tips.includes(name));
+    if (missing.length) throw new Error(`Outgroup tip(s) not found: ${missing.join(", ")}`);
+    if (request.mode === "single" && names.length !== 1) throw new Error("Choose exactly one outgroup tip.");
+    if (request.mode === "multiple" && names.length < 2) throw new Error("Choose at least two outgroup tips.");
+    state.appliedRoot = request;
+    if (report && request.mode === "multiple") {
+      const descendants = mrcaDescendants(state.parsedTree,names), unexpected = descendants.filter(name => !names.includes(name));
+      state.pendingRootReport = { message:unexpected.length ? `PearTree rooted by the selected MRCA. Additional MRCA descendants (${unexpected.length}):\n${unexpected.join("\n")}` : "PearTree rooted by the selected monophyletic outgroup.", warning:unexpected.length > 0 };
+    } else state.pendingRootReport = report ? { message:"PearTree applied the selected outgroup root.",warning:false } : null;
+    postViewer({ type:"phylophoto:root",request });
+  } catch (error) { showStatus(error.message || String(error),true); }
+}
+
+async function mountTree() {
+  if (!state.sourceTree || !state.viewerReady) return;
+  const mode = document.querySelector('input[name="branch-mode"]:checked').value, tree = transformBranchLengths(state.parsedTree,mode) || state.sourceTree;
+  let settings = state.currentSettings;
+  if (!Object.keys(settings).length) {
+    try { settings = JSON.parse(localStorage.getItem("phylophoto-client-saved-visual-settings") || "{}"); } catch { settings = {}; }
+  }
+  state.loadId += 1;
+  postViewer({ type:"phylophoto:load-tree",tree,filename:state.filename,settings,theme:matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",loadId:state.loadId });
+}
+
+async function loadTreeText(text, filename) {
+  state.sourceTree = extractNewick(text); state.parsedTree = parseNewick(state.sourceTree); state.tips = collectTips(state.parsedTree); state.filename = filename; state.appliedRoot = null;
+  ui["outgroup-search"].value = ""; setOutgroups([]); renderOutgroupPicker();
+  ui["tree-name"].textContent = filename;
+  for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip"]) ui[id].disabled = false;
+  ui["create-tip-folders"].disabled = !state.files.length;
+  ui["tip-search"].value = ""; renderTipMatches();
+  await mountTree(); updateFolderMatches(); setSelection([]); showStatus("");
+}
+
+async function loadTree(file) {
+  if (!file) return;
+  try { await loadTreeText(await file.text(), file.name); }
+  catch (error) { ui["tree-empty"].hidden = false; ui["tree-empty"].textContent = `Could not open tree: ${error.message || error}`; }
+}
+
+function receiveNativeMessage(message) {
+  if (!message || typeof message !== "object") return;
+  if (message.type === "tree") {
+    loadTreeText(message.text || "", message.filename || "tree.nwk").catch(error => showStatus(`Could not open tree: ${error.message || error}`, true));
+  } else if (message.type === "photoFolder") {
+    state.photoFolderHandle = { native: true };
+    setPhotoFiles(Array.isArray(message.files) ? message.files : [], message.name || "");
+  } else if (message.type === "foldersCreated") {
+    const extra = Number(message.skipped || 0) ? `; skipped ${message.skipped} invalid label(s)` : "";
+    const failures = Array.isArray(message.failed) && message.failed.length ? `; could not create ${message.failed.length}` : "";
+    showStatus(`Created ${message.count || 0} tip folder(s)${extra}${failures}.`);
+  } else if (message.type === "error") {
+    showStatus(message.message || "Native file operation failed.", true);
+  }
+}
+
+window.PhyloPhotoNative = { receive: receiveNativeMessage };
+function clearTree() {
+  postViewer({ type:"phylophoto:clear" }); revokeImages(); Object.assign(state,{ loadId:0,loadedId:0,currentSettings:{},sourceTree:"",filename:"",parsedTree:null,tips:[],selectedTips:[],files:[],photoFolderHandle:null,folderIndex:new Map(),folderMatches:new Map(),metadata:null,metadataTipColumn:"",appliedRoot:null,pendingRootReport:null });
+  ui["tree-empty"].replaceChildren(); const button = document.createElement("button"); button.className = "button primary"; button.type = "button"; button.textContent = "Open a tree"; button.addEventListener("click", () => nativePost("chooseTree") || ui["tree-file"].click()); ui["tree-empty"].append(button); ui["tree-empty"].hidden = false;
+  ui["photo-results"].replaceChildren(); ui["metadata-results"].replaceChildren(); ui["selection-summary"].textContent = ""; ui["tree-name"].textContent = ""; ui["photo-folder-name"].textContent = ""; ui["folder-warning-panel"].hidden = true; showStatus("");
+  for (const id of ["tree-file","photo-folder","metadata-file","tip-search","outgroup-search","multiple-outgroups"]) ui[id].value = "";
+  ui["tip-matches"].replaceChildren(); renderOutgroupPicker();
+  for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip","refresh-photo-folder","create-tip-folders"]) ui[id].disabled = true;
+}
+function updateMatchingControls() { const rule = ui["match-rule"].value; ui["delimiter-wrap"].hidden = rule !== "prefix"; ui["prefix-count-wrap"].hidden = rule !== "prefix"; ui["regex-wrap"].hidden = rule !== "regex"; }
+function updateRootingControls() {
+  const mode = ui["rooting-mode"].value;
+  ui["outgroup-picker"].hidden = mode !== "single" && mode !== "multiple";
+  if (mode === "single" && selectedOutgroups().length > 1) setOutgroups(selectedOutgroups().slice(0, 1));
+  renderOutgroupPicker();
+}
+function startSplit(event) {
+  event.preventDefault(); ui.splitter.classList.add("dragging"); document.body.classList.add("dragging");
+  const move = moveEvent => { const rect = ui.workspace.getBoundingClientRect(); setPanelPercent(Math.min(75,Math.max(25,(moveEvent.clientX - rect.left) / rect.width * 100))); };
+  const stop = () => { ui.splitter.classList.remove("dragging"); document.body.classList.remove("dragging"); window.removeEventListener("pointermove",move); saveUiPreferences(); window.dispatchEvent(new Event("resize")); };
+  window.addEventListener("pointermove",move); window.addEventListener("pointerup",stop,{ once:true });
+}
+
+ui["tree-file"].addEventListener("change",event => loadTree(event.target.files[0]));
+ui["choose-tree"].addEventListener("click",() => nativePost("chooseTree") || ui["tree-file"].click());
+ui["open-tree-empty"].addEventListener("click",() => nativePost("chooseTree") || ui["tree-file"].click());
+ui["choose-photo-folder"].addEventListener("click",choosePhotoFolder);
+ui["refresh-photo-folder"].addEventListener("click",refreshPhotoFolder);
+ui["photo-folder"].addEventListener("change",event => { state.photoFolderHandle = null; setPhotoFiles([...event.target.files], event.target.files[0]?.webkitRelativePath?.split("/")[0] || ""); });
+ui["metadata-file"].addEventListener("change",async event => { const file = event.target.files[0]; if (!file) return; state.metadata = parseCsv(await file.text()); state.metadataTipColumn = state.metadata.headers.find(header => state.metadata.rows.some(row => state.tips.includes(row[header]))) || state.metadata.headers[0] || ""; renderMetadata(); });
+ui["clear-tree"].addEventListener("click",clearTree);
+ui["select-tip"].addEventListener("click",() => { const name = ui["tip-search"].value.trim(); if (!state.tips.includes(name)) return showStatus(`Tip not found: ${name}`,true); requestPearTreeSelection([name]); showStatus(""); });
+ui["tip-search"].addEventListener("input",renderTipMatches);
+document.querySelectorAll('input[name="branch-mode"]').forEach(input => input.addEventListener("change",mountTree));
+ui["save-visual-options"].addEventListener("click",() => {
+  state.settingsRequest += 1; postViewer({ type:"phylophoto:get-settings",requestId:state.settingsRequest });
+});
+ui["reset-tree-view"].addEventListener("click",() => {
+  localStorage.removeItem("uce-photo-peartree-settings"); localStorage.removeItem("phylophoto-client-saved-visual-settings");
+  state.currentSettings = {};
+  if (state.sourceTree) mountTree();
+});
+for (const id of ["match-rule","delimiter","prefix-count","match-regex","comparison-mode","case-sensitive"]) ui[id].addEventListener("change",() => { updateMatchingControls(); updateFolderMatches(); });
+ui["rooting-mode"].addEventListener("change",updateRootingControls);
+ui["outgroup-search"].addEventListener("input", renderOutgroupPicker);
+ui["apply-root"].addEventListener("click",() => applyRoot()); ui.splitter.addEventListener("pointerdown",startSplit);
+ui["create-tip-folders"].addEventListener("click",() => {
+  if (!state.tips.length) return;
+  if (window.confirm(`Create missing folders for ${state.tips.length} tree tip(s) in the selected photo folder?`)) nativePost("createMissingTipFolders", { tips: state.tips });
+});
+ui["lazy-photo-loading"].addEventListener("change",() => { saveUiPreferences(); renderPhotos(); });
+ui.splitter.addEventListener("keydown",event => { if (!["ArrowLeft","ArrowRight"].includes(event.key)) return; event.preventDefault(); setPanelPercent(Math.min(75,Math.max(25,panelPercent() + (event.key === "ArrowRight" ? 2 : -2)))); saveUiPreferences(); });
+window.addEventListener("message",event => {
+  if (event.origin !== window.location.origin || event.source !== ui["tree-viewer"].contentWindow) return;
+  const message = event.data || {};
+  if (message.type === "phylophoto:ready") {
+    state.viewerReady = true;
+    if (state.sourceTree) mountTree();
+  } else if (message.type === "phylophoto:tree-loaded" && message.loadId === state.loadId && state.loadedId !== message.loadId) {
+    state.loadedId = message.loadId;
+    ui["tree-empty"].hidden = true;
+    if (state.appliedRoot) postViewer({ type:"phylophoto:root",request:state.appliedRoot });
+  } else if (message.type === "phylophoto:selection") {
+    setSelection(message.tips);
+  } else if (message.type === "phylophoto:settings-changed") {
+    state.currentSettings = message.settings || {};
+  } else if (message.type === "phylophoto:settings" && message.requestId === state.settingsRequest) {
+    state.currentSettings = message.settings || {};
+    localStorage.setItem("phylophoto-client-saved-visual-settings",JSON.stringify(state.currentSettings));
+    const button = ui["save-visual-options"], original = button.textContent;
+    button.textContent = "Saved";
+    window.setTimeout(() => { button.textContent = original; },1000);
+  } else if (message.type === "phylophoto:root-applied") {
+    if (state.pendingRootReport) showStatus(state.pendingRootReport.message,state.pendingRootReport.warning);
+    state.pendingRootReport = null;
+  } else if (message.type === "phylophoto:root-error" || message.type === "phylophoto:error") {
+    showStatus(message.message || "PearTree error",true);
+  }
+});
+ui["tree-viewer"].addEventListener("load",() => postViewer({ type:"phylophoto:ping" }));
+window.addEventListener("beforeunload",revokeImages); restoreUiPreferences(); updateRootingControls(); postViewer({ type:"phylophoto:ping" });
