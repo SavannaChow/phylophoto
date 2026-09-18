@@ -22,17 +22,19 @@ function setPanelPercent(percent) { ui.workspace.style.gridTemplateColumns = `mi
 function drawerWidthLimit() { return { min:320, max:Math.max(320,Math.floor(window.innerWidth * 2 / 3)) }; }
 function setDrawerWidth(width) { const limits = drawerWidthLimit(), value = Math.round(Math.min(limits.max,Math.max(limits.min,Number(width) || Math.round(window.innerWidth / 2)))); document.documentElement.style.setProperty("--settings-drawer-width", `${value}px`); ui["drawer-resizer"].setAttribute("aria-valuemin", limits.min); ui["drawer-resizer"].setAttribute("aria-valuemax", limits.max); ui["drawer-resizer"].setAttribute("aria-valuenow", value); }
 function currentDrawerWidth() { return Math.round(ui["settings-drawer"].getBoundingClientRect().width); }
-function saveUiPreferences() { localStorage.setItem("phylophoto-client-ui", JSON.stringify({ panel: panelPercent(), drawerWidth:currentDrawerWidth(), matching: matchingOptions(), lazyPhotoLoading: ui["lazy-photo-loading"].checked })); }
+function saveUiPreferences() { localStorage.setItem("phylophoto-client-ui", JSON.stringify({ panel: panelPercent(), drawerWidth:currentDrawerWidth(), matchingDefaultsVersion:2, matching: matchingOptions(), lazyPhotoLoading: ui["lazy-photo-loading"].checked })); }
 function restoreUiPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem("phylophoto-client-ui") || "{}"), matching = saved.matching || {};
     if (saved.panel >= 25 && saved.panel <= 75) setPanelPercent(saved.panel);
     if (Number(saved.drawerWidth) > 0) setDrawerWidth(saved.drawerWidth);
-    if (["full","prefix","regex"].includes(matching.rule)) ui["match-rule"].value = matching.rule;
+    const migrateLegacyDefault = saved.matchingDefaultsVersion !== 2 && matching.rule === "full" && matching.comparison === "equals";
+    if (migrateLegacyDefault) { ui["match-rule"].value = "prefix"; ui["comparison-mode"].value = "starts"; }
+    else if (["full","prefix","regex"].includes(matching.rule)) ui["match-rule"].value = matching.rule;
     if (typeof matching.delimiter === "string") ui.delimiter.value = matching.delimiter;
     if (Number(matching.fieldCount) >= 1) ui["prefix-count"].value = matching.fieldCount;
     if (typeof matching.pattern === "string") ui["match-regex"].value = matching.pattern;
-    if (["equals","starts"].includes(matching.comparison)) ui["comparison-mode"].value = matching.comparison;
+    if (!migrateLegacyDefault && ["equals","starts"].includes(matching.comparison)) ui["comparison-mode"].value = matching.comparison;
     ui["case-sensitive"].checked = Boolean(matching.caseSensitive); ui["lazy-photo-loading"].checked = Boolean(saved.lazyPhotoLoading);
   } catch { localStorage.removeItem("phylophoto-client-ui"); }
   updateMatchingControls();
