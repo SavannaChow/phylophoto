@@ -14,16 +14,18 @@
       <button id="choose-tree" type="button">Open tree</button><input id="tree-file" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain" hidden>
       <button id="choose-photo-folder" type="button">Photo folder</button><input id="photo-folder" type="file" webkitdirectory directory multiple hidden>
       <button id="refresh-photo-folder" class="icon-button" type="button" aria-label="Refresh photo folder" title="Refresh photo folder" disabled>↻</button>
-      <label class="button" for="metadata-file">Metadata CSV</label><input id="metadata-file" type="file" accept=".csv,text/csv" hidden>
+      <button id="open-settings" type="button" aria-controls="settings-drawer" aria-expanded="false">Settings</button>
       <button id="clear-tree" type="button" disabled>Clear</button>
     </nav>
   </header>
   <main id="workspace">
     <section id="tree-panel" class="panel" aria-label="Phylogeny tree"><iframe id="tree-viewer" src="viewer.html" title="PearTree phylogeny viewer"></iframe><div id="tree-empty" class="panel-empty"><button id="open-tree-empty" class="button primary" type="button">Open a tree</button></div></section>
     <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize tree and photo panels" aria-valuemin="25" aria-valuemax="75" tabindex="0"></div>
-    <section id="photo-panel" class="panel" aria-label="Sample photos"><div id="selection-summary"></div><section id="metadata-results" hidden></section><div id="photo-results"></div></section>
+    <section id="photo-panel" class="panel" aria-label="Sample photos"><div id="selection-summary"></div><div id="photo-results"></div></section>
   </main>
-  <section id="bottom-controls">
+  <aside id="settings-drawer" aria-label="Settings" aria-hidden="true">
+    <div class="drawer-header"><h2>Settings</h2><button id="close-settings" class="icon-button" type="button" aria-label="Close settings">×</button></div>
+    <div class="drawer-content">
     <details id="node-selection-panel"><summary>Node selection</summary><div class="control-grid"><div class="tip-picker"><label>Tip <input id="tip-search" autocomplete="off" placeholder="Type to match a tip" disabled></label><div id="tip-matches" class="outgroup-matches" role="listbox"></div></div><button id="select-tip" type="button" disabled>Select</button></div></details>
     <details id="tree-settings-panel"><summary>Tree settings</summary><div class="control-grid"><fieldset><legend>Tree display</legend><label><input type="radio" name="branch-mode" value="original" checked> Original</label><label><input type="radio" name="branch-mode" value="proportional"> Proportional</label><label><input type="radio" name="branch-mode" value="equal"> Equal</label></fieldset><button id="save-visual-options" type="button">Save visual options</button><button id="reset-tree-view" type="button">Reset visual options</button></div></details>
     <details id="folder-settings-panel"><summary>Photo folders <span id="photo-folder-name" class="summary-meta"></span></summary><div class="control-grid">
@@ -38,9 +40,9 @@
       <button id="apply-root" type="button" disabled>Apply root in PearTree</button><div id="rooting-status" class="status" hidden></div>
     </div></details>
     <details id="folder-warning-panel" hidden><summary id="folder-warning-summary">Folder warnings</summary><div class="table-wrap"><table><thead><tr><th>Tip</th><th>Derived key</th><th>Status</th><th>Candidate folders</th></tr></thead><tbody id="folder-warning-rows"></tbody></table></div></details>
-  </section>
+    </div>
+  </aside>
   <template id="photo-group-template"><article class="photo-group"><h2></h2><div class="photo-stack"></div></article></template>
-  <template id="metadata-table-template"><details><summary>Metadata</summary><div class="table-wrap"><table><thead></thead><tbody></tbody></table></div></details></template>
   <script type="module" src="app.js"></script>
 </body>
 </html>

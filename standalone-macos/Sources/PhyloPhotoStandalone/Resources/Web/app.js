@@ -1,11 +1,11 @@
 "use strict";
 
-import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseCsv, parseNewick, transformBranchLengths } from "./core.js";
+import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseNewick, transformBranchLengths } from "./core.js";
 
 const byId = id => document.getElementById(id);
-const ids = ["tree-file","choose-tree","open-tree-empty","photo-folder","choose-photo-folder","refresh-photo-folder","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","comparison-mode","case-sensitive","lazy-photo-loading","create-tip-folders","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
+const ids = ["tree-file","choose-tree","open-tree-empty","photo-folder","choose-photo-folder","refresh-photo-folder","open-settings","close-settings","settings-drawer","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","photo-results","splitter","tip-search","tip-matches","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","comparison-mode","case-sensitive","lazy-photo-loading","create-tip-folders","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
 const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
-const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], photoObserver: null, metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null };
+const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], photoObserver: null, appliedRoot: null, pendingRootReport: null };
 
 function nativePost(action, payload = {}) {
   const handler = window.webkit?.messageHandlers?.phylophotoNative;
@@ -35,6 +35,7 @@ function restoreUiPreferences() {
 }
 function showStatus(message, warning = false) { ui["rooting-status"].textContent = message; ui["rooting-status"].classList.toggle("warning", warning); ui["rooting-status"].hidden = !message; }
 function revokeImages() { state.photoObserver?.disconnect(); state.photoObserver = null; state.imageUrls.forEach(URL.revokeObjectURL); state.imageUrls = []; }
+function setSettingsDrawer(open) { ui["settings-drawer"].classList.toggle("is-open", open); ui["settings-drawer"].setAttribute("aria-hidden", String(!open)); ui["open-settings"].setAttribute("aria-expanded", String(open)); }
 
 function setPhotoFiles(files, folderName = "") {
   state.files = files;
@@ -98,20 +99,6 @@ function updateFolderMatches() {
   } catch (error) { ui["folder-warning-panel"].hidden = false; ui["folder-warning-summary"].textContent = `Folder matching error — ${error.message || error}`; }
 }
 
-function renderMetadata() {
-  ui["metadata-results"].replaceChildren();
-  if (!state.metadata || !state.selectedTips.length || !state.metadataTipColumn) { ui["metadata-results"].hidden = true; return; }
-  const rows = state.metadata.rows.filter(row => state.selectedTips.includes(row[state.metadataTipColumn]));
-  if (!rows.length) { ui["metadata-results"].hidden = true; return; }
-  const fragment = byId("metadata-table-template").content.cloneNode(true);
-  fragment.querySelector("summary").textContent = `Metadata rows (${rows.length})`;
-  const headRow = document.createElement("tr");
-  state.metadata.headers.forEach(header => { const th = document.createElement("th"); th.textContent = header; headRow.append(th); });
-  fragment.querySelector("thead").append(headRow);
-  rows.forEach(data => { const tr = document.createElement("tr"); state.metadata.headers.forEach(header => { const td = document.createElement("td"); td.textContent = data[header]; tr.append(td); }); fragment.querySelector("tbody").append(tr); });
-  ui["metadata-results"].append(fragment); ui["metadata-results"].hidden = false;
-}
-
 function renderPhotos() {
   revokeImages(); ui["photo-results"].replaceChildren();
   const progressive = ui["lazy-photo-loading"].checked && "IntersectionObserver" in window;
@@ -127,7 +114,6 @@ function renderPhotos() {
     }, { root: ui["photo-panel"], rootMargin:"240px 0px" });
   }
   ui["selection-summary"].textContent = state.selectedTips.length === 1 ? `Tip — ${state.selectedTips[0]}` : state.selectedTips.length ? `Selected node — ${state.selectedTips.length} descendant tips` : "";
-  renderMetadata();
   if (!state.selectedTips.length || !state.files.length) return;
   let count = 0;
   for (const tip of state.selectedTips) {
@@ -256,10 +242,10 @@ function receiveNativeMessage(message) {
 
 window.PhyloPhotoNative = { receive: receiveNativeMessage };
 function clearTree() {
-  postViewer({ type:"phylophoto:clear" }); revokeImages(); Object.assign(state,{ loadId:0,loadedId:0,currentSettings:{},sourceTree:"",filename:"",parsedTree:null,tips:[],selectedTips:[],files:[],photoFolderHandle:null,folderIndex:new Map(),folderMatches:new Map(),metadata:null,metadataTipColumn:"",appliedRoot:null,pendingRootReport:null });
+  postViewer({ type:"phylophoto:clear" }); revokeImages(); Object.assign(state,{ loadId:0,loadedId:0,currentSettings:{},sourceTree:"",filename:"",parsedTree:null,tips:[],selectedTips:[],files:[],photoFolderHandle:null,folderIndex:new Map(),folderMatches:new Map(),appliedRoot:null,pendingRootReport:null });
   ui["tree-empty"].replaceChildren(); const button = document.createElement("button"); button.className = "button primary"; button.type = "button"; button.textContent = "Open a tree"; button.addEventListener("click", () => nativePost("chooseTree") || ui["tree-file"].click()); ui["tree-empty"].append(button); ui["tree-empty"].hidden = false;
-  ui["photo-results"].replaceChildren(); ui["metadata-results"].replaceChildren(); ui["selection-summary"].textContent = ""; ui["tree-name"].textContent = ""; ui["photo-folder-name"].textContent = ""; ui["folder-warning-panel"].hidden = true; showStatus("");
-  for (const id of ["tree-file","photo-folder","metadata-file","tip-search","outgroup-search","multiple-outgroups"]) ui[id].value = "";
+  ui["photo-results"].replaceChildren(); ui["selection-summary"].textContent = ""; ui["tree-name"].textContent = ""; ui["photo-folder-name"].textContent = ""; ui["folder-warning-panel"].hidden = true; showStatus("");
+  for (const id of ["tree-file","photo-folder","tip-search","outgroup-search","multiple-outgroups"]) ui[id].value = "";
   ui["tip-matches"].replaceChildren(); renderOutgroupPicker();
   for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip","refresh-photo-folder","create-tip-folders"]) ui[id].disabled = true;
 }
@@ -283,7 +269,8 @@ ui["open-tree-empty"].addEventListener("click",() => nativePost("chooseTree") ||
 ui["choose-photo-folder"].addEventListener("click",choosePhotoFolder);
 ui["refresh-photo-folder"].addEventListener("click",refreshPhotoFolder);
 ui["photo-folder"].addEventListener("change",event => { state.photoFolderHandle = null; setPhotoFiles([...event.target.files], event.target.files[0]?.webkitRelativePath?.split("/")[0] || ""); });
-ui["metadata-file"].addEventListener("change",async event => { const file = event.target.files[0]; if (!file) return; state.metadata = parseCsv(await file.text()); state.metadataTipColumn = state.metadata.headers.find(header => state.metadata.rows.some(row => state.tips.includes(row[header]))) || state.metadata.headers[0] || ""; renderMetadata(); });
+ui["open-settings"].addEventListener("click",() => setSettingsDrawer(!ui["settings-drawer"].classList.contains("is-open")));
+ui["close-settings"].addEventListener("click",() => setSettingsDrawer(false));
 ui["clear-tree"].addEventListener("click",clearTree);
 ui["select-tip"].addEventListener("click",() => { const name = ui["tip-search"].value.trim(); if (!state.tips.includes(name)) return showStatus(`Tip not found: ${name}`,true); requestPearTreeSelection([name]); showStatus(""); });
 ui["tip-search"].addEventListener("input",renderTipMatches);
@@ -335,3 +322,4 @@ window.addEventListener("message",event => {
 });
 ui["tree-viewer"].addEventListener("load",() => postViewer({ type:"phylophoto:ping" }));
 window.addEventListener("beforeunload",revokeImages); restoreUiPreferences(); updateRootingControls(); postViewer({ type:"phylophoto:ping" });
+window.addEventListener("keydown",event => { if (event.key === "Escape") setSettingsDrawer(false); });
