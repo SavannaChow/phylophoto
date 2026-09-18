@@ -35,7 +35,7 @@ function restoreUiPreferences() {
 }
 function showStatus(message, warning = false) { ui["rooting-status"].textContent = message; ui["rooting-status"].classList.toggle("warning", warning); ui["rooting-status"].hidden = !message; }
 function revokeImages() { state.photoObserver?.disconnect(); state.photoObserver = null; state.imageUrls.forEach(URL.revokeObjectURL); state.imageUrls = []; }
-function setSettingsDrawer(open) { ui["settings-drawer"].classList.toggle("is-open", open); ui["settings-drawer"].setAttribute("aria-hidden", String(!open)); ui["open-settings"].setAttribute("aria-expanded", String(open)); }
+function setSettingsDrawer(open) { ui["settings-drawer"].classList.toggle("is-open", open); ui["settings-drawer"].setAttribute("aria-hidden", String(!open)); ui["open-settings"].setAttribute("aria-expanded", String(open)); ui["open-settings"].classList.toggle("is-active", open); }
 
 function setPhotoFiles(files, folderName = "") {
   state.files = files;
