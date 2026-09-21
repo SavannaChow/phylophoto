@@ -4,21 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Browser-local phylogeny and sample-photo browser">
-  <title>Phylogeny photo browser</title>
+  <title data-i18n="appTitle">Phylogeny photo browser</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="app-bar">
-    <div class="title-row"><h1>Phylogeny photo browser</h1><span id="tree-name"></span></div>
+    <div class="title-row"><h1 data-i18n="appTitle">Phylogeny photo browser</h1><span id="tree-name"></span></div>
     <nav class="file-actions" aria-label="Local files">
       <label class="button" data-i18n="openTree" for="tree-file">Open tree</label><input id="tree-file" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain" hidden>
-      <button id="choose-photo-folder" type="button">Photo folder</button><input id="photo-folder" type="file" webkitdirectory directory multiple hidden>
+      <button id="choose-photo-folder" type="button" data-i18n="photoFolder">Photo folder</button><input id="photo-folder" type="file" webkitdirectory directory multiple hidden>
       <button id="refresh-photo-folder" class="icon-button" type="button" aria-label="Refresh photo folder" title="Refresh photo folder" disabled>↻</button>
       <select id="nas-dataset" aria-label="NAS dataset" title="NAS dataset" hidden><option value="">NAS dataset</option></select>
       <button id="load-nas-dataset" type="button" hidden disabled>Load NAS</button>
       <button id="share-dataset" class="icon-button" type="button" aria-label="Copy dataset share link" title="Copy dataset share link" hidden disabled>🔗</button>
-      <label class="button" for="metadata-file">Metadata CSV</label><input id="metadata-file" type="file" accept=".csv,text/csv" hidden>
-      <button id="clear-tree" type="button" disabled>Clear</button>
+      <label class="button" for="metadata-file" data-i18n="metadata">Metadata CSV</label><input id="metadata-file" type="file" accept=".csv,text/csv" hidden>
+      <button id="clear-tree" type="button" data-i18n="clear" disabled>Clear</button>
       <button id="settings-button" class="icon-button" type="button" aria-label="Settings" aria-controls="settings-drawer" title="Settings">⚙</button>
     </nav>
   </header>
@@ -31,39 +31,39 @@
     <div id="drawer-backdrop"></div><div id="settings-shell"><div id="settings-resizer" role="separator" aria-orientation="vertical" aria-label="Resize settings panel" tabindex="0"></div><section id="settings-content"><div class="drawer-heading"><h2 data-i18n="settings">Settings</h2><button id="close-settings" class="icon-button" type="button" aria-label="Close settings">×</button></div>
     <label class="language-picker"><span data-i18n="language">Language</span><select id="language-select"><option value="en">English</option><option value="zh-Hant">繁體中文</option></select></label>
   <section id="bottom-controls">
-    <details id="node-selection-panel"><summary>Tip search / node selection</summary><div class="control-grid"><div class="tip-picker"><label>Tip <input id="tip-search" autocomplete="off" placeholder="Type to match a tip" disabled></label><div id="tip-matches" class="outgroup-matches" role="listbox"></div><div class="tip-navigation"><button id="tip-prev" type="button" disabled>Previous</button><span id="tip-match-position"></span><button id="tip-next" type="button" disabled>Next</button></div></div><button id="select-tip" type="button" disabled>Select</button></div></details>
-    <details id="tree-settings-panel"><summary>Tree settings</summary><div class="control-grid"><fieldset><legend>Tree display</legend><label><input type="radio" name="branch-mode" value="original" checked> Original</label><label><input type="radio" name="branch-mode" value="proportional"> Proportional</label><label><input type="radio" name="branch-mode" value="equal"> Equal</label></fieldset><button id="save-visual-options" type="button">Save visual options</button><button id="reset-tree-view" type="button">Reset visual options</button></div></details>
-    <details id="folder-settings-panel"><summary>Photo folders <span id="photo-folder-name" class="summary-meta"></span></summary><div class="control-grid">
-      <label>Tip-to-folder key <select id="match-rule"><option value="full">Full tip label</option><option value="prefix">Leading fields</option><option value="regex">Regular expression</option></select></label>
-      <label id="delimiter-wrap" hidden>Delimiter <input id="delimiter" value="_"></label><label id="prefix-count-wrap" hidden>Leading fields <input id="prefix-count" type="number" min="1" value="1"></label><label id="regex-wrap" hidden>Regex <input id="match-regex" value="^([^_]+)"></label>
-      <label>Comparison <select id="comparison-mode"><option value="equals">Equals key</option><option value="starts">Starts with key</option></select></label><label class="inline-check"><input id="case-sensitive" type="checkbox"> Case-sensitive</label><label class="inline-check"><input id="lazy-photo-loading" type="checkbox"> Load photos on scroll</label>
+    <details id="node-selection-panel"><summary data-i18n="tipSearch">Tip search / node selection</summary><div class="control-grid"><div class="tip-picker"><label><span data-i18n="tip">Tip</span> <input id="tip-search" autocomplete="off" data-i18n-placeholder="typeTip" placeholder="Type to match a tip" disabled></label><div id="tip-matches" class="outgroup-matches" role="listbox"></div><div class="tip-navigation"><button id="tip-prev" type="button" data-i18n="previous" disabled>Previous</button><span id="tip-match-position"></span><button id="tip-next" type="button" data-i18n="next" disabled>Next</button></div></div><button id="select-tip" type="button" data-i18n="select" disabled>Select</button></div></details>
+    <details id="tree-settings-panel"><summary data-i18n="treeSettings">Tree settings</summary><div class="control-grid"><fieldset><legend data-i18n="treeDisplay">Tree display</legend><label><input type="radio" name="branch-mode" value="original" checked> <span data-i18n="original">Original</span></label><label><input type="radio" name="branch-mode" value="proportional"> <span data-i18n="proportional">Proportional</span></label><label><input type="radio" name="branch-mode" value="equal"> <span data-i18n="equal">Equal</span></label></fieldset><button id="save-visual-options" type="button" data-i18n="saveVisual">Save visual options</button><button id="reset-tree-view" type="button" data-i18n="resetVisual">Reset visual options</button></div></details>
+    <details id="folder-settings-panel"><summary><span data-i18n="photoFolders">Photo folders</span> <span id="photo-folder-name" class="summary-meta"></span></summary><div class="control-grid">
+      <label><span data-i18n="tipFolderKey">Tip-to-folder key</span> <select id="match-rule"><option value="full" data-i18n="fullTip">Full tip label</option><option value="prefix" data-i18n="leadingFields">Leading fields</option><option value="regex" data-i18n="regularExpression">Regular expression</option></select></label>
+      <label id="delimiter-wrap" hidden><span data-i18n="delimiter">Delimiter</span> <input id="delimiter" value="_"></label><label id="prefix-count-wrap" hidden><span data-i18n="leadingFields">Leading fields</span> <input id="prefix-count" type="number" min="1" value="1"></label><label id="regex-wrap" hidden><span data-i18n="regex">Regex</span> <input id="match-regex" value="^([^_]+)"></label>
+      <label><span data-i18n="comparison">Comparison</span> <select id="comparison-mode"><option value="equals" data-i18n="equalsKey">Equals key</option><option value="starts" data-i18n="startsKey">Starts with key</option></select></label><label class="inline-check"><input id="case-sensitive" type="checkbox"> <span data-i18n="caseSensitive">Case-sensitive</span></label><label class="inline-check"><input id="lazy-photo-loading" type="checkbox"> <span data-i18n="loadOnScroll">Load photos on scroll</span></label>
     </div></details>
-    <details id="nas-upload-panel" hidden><summary>Upload dataset to NAS</summary><div class="control-grid">
-      <label>Upload to NAS folder <select id="upload-target"><option value="">New folder</option></select></label>
-      <label>Folder name <input id="upload-dataset-id" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="analysis-2026-a"></label>
-      <label>Tree file <input id="upload-tree-file" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain"></label>
-      <label>Photo folder <input id="upload-photo-folder" type="file" webkitdirectory directory multiple></label>
-      <label>Metadata CSV (optional) <input id="upload-metadata-file" type="file" accept=".csv,text/csv"></label>
-      <button id="upload-dataset" type="button">Upload</button>
+    <details id="nas-upload-panel" hidden><summary data-i18n="uploadNas">Upload dataset to NAS</summary><div class="control-grid">
+      <label><span data-i18n="uploadTarget">Upload to NAS folder</span> <select id="upload-target"><option value="" data-i18n="newFolder">New folder</option></select></label>
+      <label><span data-i18n="folderName">Folder name</span> <input id="upload-dataset-id" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="analysis-2026-a"></label>
+      <label><span data-i18n="treeFile">Tree file</span> <input id="upload-tree-file" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain"></label>
+      <label><span data-i18n="photoFolder">Photo folder</span> <input id="upload-photo-folder" type="file" webkitdirectory directory multiple></label>
+      <label><span data-i18n="optional">Metadata CSV (optional)</span> <input id="upload-metadata-file" type="file" accept=".csv,text/csv"></label>
+      <button id="upload-dataset" type="button" data-i18n="upload">Upload</button>
       <progress id="upload-progress" value="0" max="1" hidden></progress>
       <div id="upload-status" class="status" hidden></div>
     </div></details>
-    <details id="rooting-panel"><summary>Rooting / outgroup</summary><div class="control-grid">
-      <label>Rooting mode <select id="rooting-mode" disabled><option value="original">Original root</option><option value="single">Single outgroup</option><option value="multiple">Multiple outgroups (MRCA)</option><option value="midpoint">Midpoint root</option></select></label>
-      <div id="outgroup-picker" class="outgroup-picker" hidden><label>Outgroup tip(s) <input id="outgroup-search" autocomplete="off" placeholder="Type to match"></label><div id="outgroup-matches" class="outgroup-matches" role="listbox"></div><div id="outgroup-selected" class="outgroup-selected"></div><textarea id="multiple-outgroups" hidden></textarea></div>
-      <button id="apply-root" type="button" disabled>Apply root in PearTree</button><div id="rooting-status" class="status" hidden></div>
+    <details id="rooting-panel"><summary data-i18n="rooting">Rooting / outgroup</summary><div class="control-grid">
+      <label><span data-i18n="rootingMode">Rooting mode</span> <select id="rooting-mode" disabled><option value="original" data-i18n="original">Original root</option><option value="single" data-i18n="singleOutgroup">Single outgroup</option><option value="multiple" data-i18n="multipleOutgroups">Multiple outgroups (MRCA)</option><option value="midpoint" data-i18n="midpoint">Midpoint root</option></select></label>
+      <div id="outgroup-picker" class="outgroup-picker" hidden><label><span data-i18n="outgroupTips">Outgroup tip(s)</span> <input id="outgroup-search" autocomplete="off" data-i18n-placeholder="typeTip" placeholder="Type to match"></label><div id="outgroup-matches" class="outgroup-matches" role="listbox"></div><div id="outgroup-selected" class="outgroup-selected"></div><textarea id="multiple-outgroups" hidden></textarea></div>
+      <button id="apply-root" type="button" data-i18n="applyRoot" disabled>Apply root in PearTree</button><div id="rooting-status" class="status" hidden></div>
     </div></details>
     <details id="folder-warning-panel" hidden><summary id="folder-warning-summary">Folder warnings</summary><div class="table-wrap"><table><thead><tr><th>Tip</th><th>Derived key</th><th>Status</th><th>Candidate folders</th></tr></thead><tbody id="folder-warning-rows"></tbody></table></div></details>
-    <details id="editing-panel"><summary>Rename / replace leaf labels <span id="editing-summary-meta" class="summary-meta"></span></summary><div class="control-grid">
+    <details id="editing-panel"><summary><span data-i18n="renameReplace">Rename / replace leaf labels</span> <span id="editing-summary-meta" class="summary-meta"></span></summary><div class="control-grid">
       <p id="editing-disabled-note" class="status" hidden></p>
-      <label>Search tips <input id="rename-search" autocomplete="off" placeholder="Search by tip label"></label>
-      <label>Search mode <select id="rename-search-mode"><option value="contains">Contains</option><option value="exact">Exact</option><option value="regex">Regex</option></select></label>
-      <label>Replacement <input id="rename-replacement" placeholder="New label or $1 replacement"></label>
-      <button id="rename-auto-fill" type="button">Auto-fill results</button><button id="rename-add-selected" type="button">Add selected batch</button>
+      <label><span data-i18n="searchTips">Search tips</span> <input id="rename-search" autocomplete="off" placeholder="Search by tip label"></label>
+      <label><span data-i18n="searchMode">Search mode</span> <select id="rename-search-mode"><option value="contains" data-i18n="contains">Contains</option><option value="exact" data-i18n="exact">Exact</option><option value="regex" data-i18n="regex">Regex</option></select></label>
+      <label><span data-i18n="replacement">Replacement</span> <input id="rename-replacement" placeholder="New label or $1 replacement"></label>
+      <button id="rename-auto-fill" type="button" data-i18n="autoFill">Auto-fill results</button><button id="rename-add-selected" type="button" data-i18n="addBatch">Add selected batch</button>
       <div id="rename-results" class="table-wrap"></div>
       <div id="rename-operations" class="table-wrap"></div>
-      <button id="rename-preview" type="button">Preview complete change</button><button id="rename-commit" type="button" disabled>Confirm and write back</button>
-      <button id="create-tip-folders" type="button">Create missing tip folders</button><button id="rollback-last-edit" type="button" hidden>Rollback last edit</button>
+      <button id="rename-preview" type="button" data-i18n="previewChange">Preview complete change</button><button id="rename-commit" type="button" data-i18n="confirmWrite" disabled>Confirm and write back</button>
+      <button id="create-tip-folders" type="button" data-i18n="createFolders">Create missing tip folders</button><button id="rollback-last-edit" type="button" data-i18n="rollback" hidden>Rollback last edit</button>
       <pre id="rename-preview-output" class="preview-output" hidden></pre><div id="editing-status" class="status" hidden></div>
     </div></details>
   </section>
