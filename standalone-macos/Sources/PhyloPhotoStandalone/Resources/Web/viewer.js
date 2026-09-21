@@ -51,6 +51,18 @@ async function mountTree(args) {
       paddingTop: "4",
       paddingBottom: "4",
       ...(args.settings || {}),
+      // Navigation selection must remain visible even in dense trees. These are
+      // PearTree's public selected-tip rendering settings; they never alter data.
+      selectedLabelColor: "#ff3b30",
+      selectedLabelStyle: "bold",
+      selectedTipFillColor: "#ff3b30",
+      selectedTipFillOpacity: "0.95",
+      selectedTipStrokeColor: "#ffffff",
+      selectedTipStrokeWidth: "3.5",
+      selectedTipStrokeOpacity: "1",
+      selectedTipGrowthFactor: "1",
+      selectedTipGrowth: "5",
+      selectedTipMinSize: "10",
     },
     paletteSections: "all",
     appSections: ["toolbar", "canvasContainer", "statusBar", "modals", "palette"],

@@ -2,9 +2,9 @@
 import PackageDescription
 
 let package = Package(
-    name: "PhyloPhotoStandalone",
+    name: "PhyloAtlasStandalone",
     platforms: [.macOS(.v13)],
-    products: [.executable(name: "PhyloPhoto", targets: ["PhyloPhotoStandalone"])],
+    products: [.executable(name: "PhyloAtlas", targets: ["PhyloPhotoStandalone"])],
     targets: [
         .executableTarget(
             name: "PhyloPhotoStandalone",

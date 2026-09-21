@@ -3,11 +3,12 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
-  <key>CFBundleDisplayName</key><string>PhyloPhoto</string>
-  <key>CFBundleExecutable</key><string>PhyloPhoto</string>
+  <key>CFBundleDisplayName</key><string>PhyloAtlas</string>
+  <key>CFBundleExecutable</key><string>PhyloAtlas</string>
   <key>CFBundleIdentifier</key><string>org.phylophoto.standalone</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundleName</key><string>PhyloPhoto</string>
+  <key>CFBundleIconFile</key><string>PhyloAtlas</string>
+  <key>CFBundleName</key><string>PhyloAtlas</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>1.0.0</string>
   <key>CFBundleVersion</key><string>1</string>
