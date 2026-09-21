@@ -75,7 +75,7 @@ class DatasetTests(unittest.TestCase):
         self.assertIn("(1:0.1,2:0.2)95:0.3;", updated)
         self.assertEqual(updated.replace("A_new", "A"), source)
 
-    def test_edit_preview_and_commit_sync_folders_with_backup(self):
+    def test_edit_commit_sync_folders_and_writes_history(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             analysis = root / "analysis"
@@ -87,10 +87,8 @@ class DatasetTests(unittest.TestCase):
             self.assertIn("A-renamed", preview["updated"])
             self.assertTrue((analysis / "A-renamed" / "one.jpg").is_file())
             self.assertFalse((analysis / "A").exists())
-            self.assertTrue((root / ".phylophoto-backups" / "analysis" / result["backupId"] / "folders" / "A" / "one.jpg").is_file())
-            server.rollback_dataset("analysis", result["backupId"], root)
-            self.assertTrue((analysis / "A" / "one.jpg").is_file())
-            self.assertFalse((analysis / "A-renamed").exists())
+            history = (analysis / "rename-history.txt").read_text(encoding="utf-8")
+            self.assertIn("A -> A-renamed", history)
 
     def test_tip_folder_creation_is_available(self):
         with tempfile.TemporaryDirectory() as directory:

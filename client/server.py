@@ -362,10 +362,6 @@ def commit_rename(dataset_id: str, operations: list[dict], data_root: Path | Non
     if not preview["changes"]:
         raise DatasetError("No matching leaf labels were found")
     config = get_dataset(dataset_id, data_root)
-    root = next(path for path in dataset_roots(data_root) if inside(config["tree"], path))
-    folder_names = [item["from"] for item in preview["folders"] if item["exists"]]
-    folder_targets = [item["to"] for item in preview["folders"] if item["exists"] and item["from"] != item["to"]]
-    backup_id = _make_backup(config, dataset_id, root, folder_names, folder_targets)
     moved: list[tuple[Path, Path]] = []
     temp_tree = config["tree"].with_name(f".{config['tree'].name}.{uuid.uuid4().hex}.tmp")
     try:
@@ -386,7 +382,16 @@ def commit_rename(dataset_id: str, operations: list[dict], data_root: Path | Non
             if target.exists() and not source.exists():
                 target.rename(source)
         raise
-    return {"dataset": dataset_id, "backupId": backup_id, "changes": preview["changes"], "folders": preview["folders"]}
+    history = config["tree"].parent / "rename-history.txt"
+    lines = [f"{datetime.now().astimezone().isoformat(timespec='seconds')}  {config['tree'].name}"]
+    lines.extend(f"{item['from']} -> {item['to']}" for item in preview["changes"])
+    history_error = ""
+    try:
+        with history.open("a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n\n")
+    except OSError as error:
+        history_error = str(error)
+    return {"dataset": dataset_id, "changes": preview["changes"], "folders": preview["folders"], "history": history.name, "historyError": history_error}
 
 
 def create_tip_folders(dataset_id: str, data_root: Path | None = None) -> dict:
