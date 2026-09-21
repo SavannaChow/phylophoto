@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve PhyloPhoto and read-only datasets stored on the NAS."""
+"""Serve PhyloPhoto datasets and explicitly gated NAS editing operations."""
 
 from __future__ import annotations
 
@@ -7,6 +7,9 @@ import json
 import mimetypes
 import os
 import re
+import shutil
+import uuid
+from datetime import datetime
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -18,6 +21,7 @@ DATA_ROOT = Path(os.environ.get("PHYLOPHOTO_DATA_ROOT", "/data")).resolve()
 DATASET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 TREE_EXTENSIONS = {".nwk", ".newick", ".tree", ".tre", ".nex", ".nexus"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".bmp", ".avif", ".heic", ".heif"}
+EDITING_ENABLED = os.environ.get("PHYLOPHOTO_ENABLE_EDITING", "0").lower() in {"1", "true", "yes", "on"}
 
 
 class DatasetError(ValueError):
@@ -114,7 +118,7 @@ def dataset_payload(dataset_id: str, data_root: Path | None = None) -> dict:
     config = get_dataset(dataset_id, data_root)
     encoded_id = quote(dataset_id, safe="")
     photo_folders = {}
-    for folder in sorted(path for path in config["photos"].iterdir() if path.is_dir()):
+    for folder in sorted(path for path in config["photos"].iterdir() if path.is_dir() and not path.name.startswith(".")):
         photos = []
         image_paths = sorted(path for path in folder.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS)
         for image_path in image_paths:
@@ -129,6 +133,333 @@ def dataset_payload(dataset_id: str, data_root: Path | None = None) -> dict:
         "metadata": {"filename": config["metadata"].name, "url": f"/api/datasets/{encoded_id}/metadata"} if config["metadata"] else None,
         "photoFolders": photo_folders,
     }
+
+
+def _tree_span(source: str) -> tuple[int, int]:
+    start = source.find("(")
+    if start < 0:
+        raise DatasetError("No Newick tree was found in the file")
+    depth = 0
+    quoted = False
+    comment_depth = 0
+    for index in range(start, len(source)):
+        char = source[index]
+        if quoted:
+            if char == "'":
+                if index + 1 < len(source) and source[index + 1] == "'":
+                    continue
+                quoted = False
+            continue
+        if comment_depth:
+            if char == "]":
+                comment_depth -= 1
+            continue
+        if char == "'":
+            quoted = True
+        elif char == "[":
+            comment_depth += 1
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif char == ";" and depth == 0:
+            return start, index + 1
+    raise DatasetError("The tree statement is incomplete")
+
+
+def _quoted_token(source: str, start: int) -> tuple[int, int, str]:
+    if source[start] != "'":
+        end = start
+        while end < len(source) and source[end] not in "(),:;[]\t\r\n ":
+            end += 1
+        return start, end, source[start:end]
+    end = start + 1
+    value = []
+    while end < len(source):
+        if source[end] == "'":
+            if end + 1 < len(source) and source[end + 1] == "'":
+                value.append("'")
+                end += 2
+                continue
+            return start, end + 1, "".join(value)
+        value.append(source[end])
+        end += 1
+    raise DatasetError("Unclosed quoted tree label")
+
+
+def _leaf_label_spans(newick: str) -> list[tuple[int, int, str]]:
+    spans = []
+    index = 0
+    expect_label = True
+    while index < len(newick):
+        char = newick[index]
+        if char.isspace() or char in "[]":
+            if char == "[":
+                end = newick.find("]", index + 1)
+                index = len(newick) if end < 0 else end + 1
+            else:
+                index += 1
+            continue
+        if char == "(":
+            expect_label = True
+            index += 1
+            continue
+        if char == ",":
+            expect_label = True
+            index += 1
+            continue
+        if char == ")":
+            expect_label = False
+            index += 1
+            continue
+        if char == ":":
+            index += 1
+            while index < len(newick) and newick[index] not in ",);":
+                index += 1
+            continue
+        if char == ";":
+            break
+        start, end, label = _quoted_token(newick, index)
+        if expect_label:
+            spans.append((start, end, label))
+        index = end
+        expect_label = False
+    return spans
+
+
+def _translate_spans(source: str) -> list[tuple[int, int, str]]:
+    match = re.search(r"\btranslate\b(.*?);", source, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return []
+    spans = []
+    body_start = match.start(1)
+    index = 0
+    while index < len(match.group(1)):
+        if match.group(1)[index].isspace() or match.group(1)[index] == ",":
+            index += 1
+            continue
+        _, key_end, _ = _quoted_token(match.group(1), index)
+        index = key_end
+        while index < len(match.group(1)) and match.group(1)[index].isspace():
+            index += 1
+        if index >= len(match.group(1)):
+            break
+        start, end, label = _quoted_token(match.group(1), index)
+        spans.append((body_start + start, body_start + end, label))
+        index = end
+    return spans
+
+
+def _translate_map(source: str) -> dict[str, str]:
+    match = re.search(r"\btranslate\b(.*?);", source, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return {}
+    mapping = {}
+    index = 0
+    body = match.group(1)
+    while index < len(body):
+        if body[index].isspace() or body[index] == ",":
+            index += 1
+            continue
+        _, key_end, key = _quoted_token(body, index)
+        index = key_end
+        while index < len(body) and body[index].isspace():
+            index += 1
+        if index >= len(body):
+            break
+        _, value_end, value = _quoted_token(body, index)
+        mapping[key] = value
+        index = value_end
+    return mapping
+
+
+def lexical_rename(source: str, operations: list[dict]) -> tuple[str, list[dict]]:
+    """Rename only leaf labels while preserving all non-label source bytes."""
+    start, end = _tree_span(source)
+    tree = source[start:end]
+    translate_spans = _translate_spans(source)
+    spans = translate_spans or [(start + left, start + right, label) for left, right, label in _leaf_label_spans(tree)]
+    by_old = {str(item.get("from", "")): str(item.get("to", "")) for item in operations}
+    if len(by_old) != len(operations):
+        raise DatasetError("Rename sources must be unique")
+    if any(not old or not new for old, new in by_old.items()):
+        raise DatasetError("Rename labels cannot be empty")
+    changes = []
+    replacements = []
+    seen_new = set()
+    for left, right, label in spans:
+        if label not in by_old:
+            continue
+        new = by_old[label]
+        if new in seen_new or (new != label and new in {candidate[2] for candidate in spans} and new not in by_old):
+            raise DatasetError(f"Rename target already exists: {new}")
+        seen_new.add(new)
+        old_text = source[left:right]
+        if old_text.startswith("'"):
+            replacement = "'" + new.replace("'", "''") + "'"
+        else:
+            if re.search(r"[\\s(),:;\\[\\]'\\\\]", new):
+                replacement = "'" + new.replace("'", "''") + "'"
+            else:
+                replacement = new
+        replacements.append((left, right, replacement))
+        changes.append({"from": label, "to": new, "start": left, "end": right})
+    if len({item["to"] for item in changes}) != len(changes):
+        raise DatasetError("Rename targets must be unique")
+    updated = source
+    for left, right, replacement in reversed(replacements):
+        updated = updated[:left] + replacement + updated[right:]
+    return updated, changes
+
+
+def _editing_required() -> None:
+    if not EDITING_ENABLED:
+        raise DatasetError("NAS editing is disabled; set PHYLOPHOTO_ENABLE_EDITING=1 to enable it")
+
+
+def _validate_folder_name(name: str) -> str:
+    value = str(name)
+    if not value or value in {".", ".."} or Path(value).name != value or "\x00" in value or "/" in value or "\\" in value:
+        raise DatasetError("Invalid tip folder name")
+    return value
+
+
+def _backup_root(data_root: Path, dataset_id: str) -> Path:
+    root = data_root / ".phylophoto-backups" / dataset_id
+    if not inside(root.resolve(), data_root.resolve()):
+        raise DatasetError("Invalid backup path")
+    return root
+
+
+def _make_backup(config: dict, dataset_id: str, data_root: Path, folders: list[str], targets: list[str] | None = None) -> str:
+    backup_id = f"{datetime.now().strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    backup = _backup_root(data_root, dataset_id) / backup_id
+    backup.mkdir(parents=True, exist_ok=False)
+    shutil.copy2(config["tree"], backup / config["tree"].name)
+    copied = []
+    for name in folders:
+        source = config["photos"] / name
+        if source.is_dir():
+            shutil.copytree(source, backup / "folders" / name)
+            copied.append(name)
+    (backup / "backup.json").write_text(json.dumps({"dataset": dataset_id, "tree": config["tree"].name, "folders": copied, "targets": targets or []}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return backup_id
+
+
+def preview_rename(dataset_id: str, operations: list[dict], data_root: Path | None = None) -> dict:
+    _editing_required()
+    config = get_dataset(dataset_id, data_root)
+    root = next(path for path in dataset_roots(data_root) if inside(config["tree"], path))
+    raw = config["tree"].read_text(encoding="utf-8")
+    updated, changes = lexical_rename(raw, operations)
+    folder_changes = []
+    for item in operations:
+        old, new = _validate_folder_name(item["from"]), _validate_folder_name(item["to"])
+        old_path, new_path = config["photos"] / old, config["photos"] / new
+        if old_path.exists() and not old_path.is_dir():
+            raise DatasetError(f"Tip folder is not a directory: {old}")
+        if old_path.is_dir() and new_path.exists() and old != new:
+            raise DatasetError(f"Destination folder already exists: {new}")
+        folder_changes.append({"from": old, "to": new, "exists": old_path.is_dir(), "conflict": new_path.exists() and old != new})
+    return {"dataset": dataset_id, "treeFilename": config["tree"].name, "original": raw, "updated": updated, "changes": changes, "folders": folder_changes, "backupRoot": str(_backup_root(root, dataset_id))}
+
+
+def commit_rename(dataset_id: str, operations: list[dict], data_root: Path | None = None) -> dict:
+    preview = preview_rename(dataset_id, operations, data_root)
+    if not preview["changes"]:
+        raise DatasetError("No matching leaf labels were found")
+    config = get_dataset(dataset_id, data_root)
+    root = next(path for path in dataset_roots(data_root) if inside(config["tree"], path))
+    folder_names = [item["from"] for item in preview["folders"] if item["exists"]]
+    folder_targets = [item["to"] for item in preview["folders"] if item["exists"] and item["from"] != item["to"]]
+    backup_id = _make_backup(config, dataset_id, root, folder_names, folder_targets)
+    moved: list[tuple[Path, Path]] = []
+    temp_tree = config["tree"].with_name(f".{config['tree'].name}.{uuid.uuid4().hex}.tmp")
+    try:
+        for item in preview["folders"]:
+            if not item["exists"] or item["from"] == item["to"]:
+                continue
+            source, target = config["photos"] / item["from"], config["photos"] / item["to"]
+            temporary = config["photos"] / f".{item['from']}.{uuid.uuid4().hex}.rename"
+            source.rename(temporary)
+            temporary.rename(target)
+            moved.append((target, source))
+        temp_tree.write_text(preview["updated"], encoding="utf-8")
+        os.replace(temp_tree, config["tree"])
+    except Exception:
+        if temp_tree.exists():
+            temp_tree.unlink()
+        for target, source in reversed(moved):
+            if target.exists() and not source.exists():
+                target.rename(source)
+        raise
+    return {"dataset": dataset_id, "backupId": backup_id, "changes": preview["changes"], "folders": preview["folders"]}
+
+
+def create_tip_folders(dataset_id: str, data_root: Path | None = None) -> dict:
+    _editing_required()
+    config = get_dataset(dataset_id, data_root)
+    raw = config["tree"].read_text(encoding="utf-8")
+    _, _ = lexical_rename(raw, [])
+    start, end = _tree_span(raw)
+    translation_map = _translate_map(raw)
+    labels = [translation_map.get(label, label) for _, _, label in _leaf_label_spans(raw[start:end])]
+    missing = []
+    for label in labels:
+        name = _validate_folder_name(label)
+        target = config["photos"] / name
+        if target.exists() and not target.is_dir():
+            raise DatasetError(f"Tip path is not a directory: {name}")
+        if not target.exists():
+            missing.append(name)
+    created = []
+    try:
+        for name in missing:
+            (config["photos"] / name).mkdir()
+            created.append(name)
+    except OSError:
+        for name in reversed(created):
+            (config["photos"] / name).rmdir()
+        raise
+    return {"dataset": dataset_id, "created": created, "existing": [label for label in labels if label not in created]}
+
+
+def rollback_dataset(dataset_id: str, backup_id: str, data_root: Path | None = None) -> dict:
+    _editing_required()
+    if not re.fullmatch(r"[A-Za-z0-9T_-]+", backup_id):
+        raise DatasetError("Invalid backup id")
+    config = get_dataset(dataset_id, data_root)
+    root = next(path for path in dataset_roots(data_root) if inside(config["tree"], path))
+    backup = _backup_root(root, dataset_id) / backup_id
+    manifest_path = backup / "backup.json"
+    if not inside(backup.resolve(), _backup_root(root, dataset_id).resolve()) or not manifest_path.is_file():
+        raise DatasetError("Backup not found")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    original_tree = backup / str(manifest.get("tree") or "")
+    if not original_tree.is_file():
+        raise DatasetError("Backup tree is missing")
+    for name in manifest.get("folders", []):
+        _validate_folder_name(name)
+    for name in manifest.get("targets", []):
+        _validate_folder_name(name)
+    tree_temp = config["tree"].with_name(f".{config['tree'].name}.{uuid.uuid4().hex}.rollback")
+    try:
+        shutil.copy2(original_tree, tree_temp)
+        os.replace(tree_temp, config["tree"])
+        for name in manifest.get("targets", []):
+            target = config["photos"] / name
+            if target.exists():
+                shutil.rmtree(target)
+        for name in manifest.get("folders", []):
+            source = backup / "folders" / name
+            target = config["photos"] / name
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(source, target)
+    finally:
+        if tree_temp.exists():
+            tree_temp.unlink()
+    return {"dataset": dataset_id, "backupId": backup_id, "restored": manifest.get("folders", [])}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -236,6 +567,9 @@ class Handler(SimpleHTTPRequestHandler):
             if temporary.exists(): temporary.unlink()
         self.send_response(HTTPStatus.NO_CONTENT); self.end_headers()
     def api(self, path: str) -> bool:
+        if path == "/api/capabilities":
+            self.send_json({"editing": EDITING_ENABLED, "language": ["en", "zh-Hant"]})
+            return True
         if path == "/api/datasets":
             datasets, errors = discover_datasets()
             self.send_json({"datasets": datasets, "errors": errors})
@@ -285,6 +619,25 @@ class Handler(SimpleHTTPRequestHandler):
             match = re.fullmatch(r"/api/admin/datasets/([^/]+)/files/(tree|metadata|photos)/(.*)", path)
             if self.command == "PUT" and match:
                 self.upload_file(unquote(match.group(1)), match.group(2), match.group(3)); return
+            match = re.fullmatch(r"/api/admin/datasets/([^/]+)/rename/(preview|commit)", path)
+            if self.command == "POST" and match:
+                body = self.read_json_body()
+                operations = body.get("operations")
+                if not isinstance(operations, list):
+                    raise DatasetError("Rename operations must be a list")
+                result = preview_rename(unquote(match.group(1)), operations) if match.group(2) == "preview" else commit_rename(unquote(match.group(1)), operations)
+                self.send_json(result, HTTPStatus.OK if match.group(2) == "preview" else HTTPStatus.CREATED)
+                return
+            match = re.fullmatch(r"/api/admin/datasets/([^/]+)/tip-folders", path)
+            if self.command == "POST" and match:
+                self.send_json(create_tip_folders(unquote(match.group(1))), HTTPStatus.CREATED)
+                return
+            match = re.fullmatch(r"/api/admin/datasets/([^/]+)/rollback", path)
+            if self.command == "POST" and match:
+                body = self.read_json_body()
+                result = rollback_dataset(unquote(match.group(1)), str(body.get("backupId") or ""))
+                self.send_json(result)
+                return
             self.send_json({"error": "Upload endpoint not found"}, HTTPStatus.NOT_FOUND)
         except DatasetError as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)

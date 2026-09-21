@@ -78,5 +78,7 @@ The service is stateless for viewers: multiple tabs and multiple people can view
 
 - The configured NAS data mount is writable so browser uploads can create folders and add photos directly in the shared library.
 - Dataset IDs and file paths are validated against path traversal.
+- Leaf-label rename, tip-folder creation, backup, and rollback are disabled by default. To enable these NAS editing controls explicitly, set `PHYLOPHOTO_ENABLE_EDITING=1` in `client/.env` and restart the container. The editor uses the Python standard library to patch the original tree/NEXUS text; it does not launch Synology Text Editor or any external program.
+- Rename preview and commit only target leaf labels. Internal labels, bootstrap/support values, branch lengths, annotations, whitespace outside the replaced token, and topology are not regenerated. Matching tip photo folders are moved with a backup; a rollback endpoint restores the last backup.
 - This deployment has no login: anyone who can reach the NAS service can view datasets and upload a dataset. Keep it inside a trusted LAN/VPN or protect it with your reverse proxy/firewall.
 - PearTree visual settings remain browser-local and are not included in shared dataset links.

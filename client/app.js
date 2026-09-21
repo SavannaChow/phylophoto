@@ -3,15 +3,28 @@
 import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseCsv, parseNewick, transformBranchLengths } from "./core.js";
 
 const byId = id => document.getElementById(id);
-const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","nas-dataset","load-nas-dataset","share-dataset","nas-upload-panel","upload-target","upload-dataset-id","upload-tree-file","upload-photo-folder","upload-metadata-file","upload-dataset","upload-progress","upload-status","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","comparison-mode","case-sensitive","lazy-photo-loading","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows"];
+const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","nas-dataset","load-nas-dataset","share-dataset","nas-upload-panel","upload-target","upload-dataset-id","upload-tree-file","upload-photo-folder","upload-metadata-file","upload-dataset","upload-progress","upload-status","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","tip-prev","tip-next","tip-match-position","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","comparison-mode","case-sensitive","lazy-photo-loading","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows","settings-button","settings-drawer","drawer-backdrop","settings-content","close-settings","language-select","editing-panel","editing-disabled-note","rename-search","rename-search-mode","rename-replacement","rename-auto-fill","rename-add-selected","rename-results","rename-operations","rename-preview","rename-commit","create-tip-folders","rollback-last-edit","rename-preview-output","editing-status","photo-viewer","photo-viewer-close","photo-viewer-prev","photo-viewer-next","photo-viewer-zoom-out","photo-viewer-zoom-in","photo-viewer-reset","photo-viewer-zoom","photo-viewer-caption","photo-viewer-stage","photo-viewer-image"];
 const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
-const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, nasDatasetId: "", folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], photoObserver: null, metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null };
+const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, nasDatasetId: "", folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], photoObserver: null, metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null, tipMatches: [], tipMatchIndex: 0, editingEnabled: false, renameRows: new Map(), renameOperations: new Map(), lastBackupId: "", viewerPhotos: [], viewerIndex: 0, viewerZoom: 1, viewerPan: { x: 0, y: 0 } };
+
+const translations = { en: { openTree:"Open tree", settings:"Settings", language:"Language", editNas:"Edit NAS dataset" }, "zh-Hant": { openTree:"開啟 tree", settings:"設定", language:"語言", editNas:"編輯 NAS dataset" } };
+function applyLanguage(language = ui["language-select"].value) {
+  const selected = translations[language] ? language : "en";
+  ui["language-select"].value = selected; document.documentElement.lang = selected === "zh-Hant" ? "zh-Hant" : "en";
+  document.querySelectorAll("[data-i18n]").forEach(node => { const key = node.dataset.i18n; if (translations[selected][key]) node.textContent = translations[selected][key]; });
+  localStorage.setItem("phylophoto-language", selected);
+}
 
 function matchingOptions() {
   return { rule: ui["match-rule"].value, delimiter: ui.delimiter.value, fieldCount: Number(ui["prefix-count"].value), pattern: ui["match-regex"].value, comparison: ui["comparison-mode"].value, caseSensitive: ui["case-sensitive"].checked };
 }
-function panelPercent() { const width = ui.workspace.getBoundingClientRect().width; return width ? ui["tree-panel"].getBoundingClientRect().width / width * 100 : 56; }
-function setPanelPercent(percent) { ui.workspace.style.gridTemplateColumns = `minmax(300px,${percent}fr) 10px minmax(300px,${100 - percent}fr)`; ui.splitter.setAttribute("aria-valuenow", Math.round(percent)); }
+function verticalLayout() { return matchMedia("(max-width: 820px)").matches; }
+function panelPercent() { const box = ui.workspace.getBoundingClientRect(), panel = ui["tree-panel"].getBoundingClientRect(); const total = verticalLayout() ? box.height : box.width; const size = verticalLayout() ? panel.height : panel.width; return total ? size / total * 100 : 56; }
+function setPanelPercent(percent) {
+  if (verticalLayout()) ui.workspace.style.gridTemplateRows = `minmax(260px,${percent}fr) 10px minmax(260px,${100 - percent}fr)`;
+  else ui.workspace.style.gridTemplateColumns = `minmax(300px,${percent}fr) 10px minmax(300px,${100 - percent}fr)`;
+  ui.splitter.setAttribute("aria-valuenow", Math.round(percent));
+}
 function saveUiPreferences() { localStorage.setItem("phylophoto-client-ui", JSON.stringify({ panel: panelPercent(), matching: matchingOptions(), lazyPhotoLoading: ui["lazy-photo-loading"].checked })); }
 function restoreUiPreferences() {
   try {
@@ -28,6 +41,19 @@ function restoreUiPreferences() {
 }
 function showStatus(message, warning = false) { ui["rooting-status"].textContent = message; ui["rooting-status"].classList.toggle("warning", warning); ui["rooting-status"].hidden = !message; }
 function revokeImages() { state.photoObserver?.disconnect(); state.photoObserver = null; state.imageUrls.forEach(URL.revokeObjectURL); state.imageUrls = []; }
+
+function updatePhotoViewer() {
+  const item = state.viewerPhotos[state.viewerIndex];
+  if (!item) return closePhotoViewer();
+  ui["photo-viewer-image"].src = item.url; ui["photo-viewer-image"].alt = item.name; ui["photo-viewer-caption"].textContent = item.caption;
+  ui["photo-viewer-prev"].disabled = state.viewerPhotos.length < 2; ui["photo-viewer-next"].disabled = state.viewerPhotos.length < 2;
+  ui["photo-viewer-zoom"].textContent = `${Math.round(state.viewerZoom * 100)}%`;
+  ui["photo-viewer-image"].style.transform = `translate(calc(-50% + ${state.viewerPan.x}px), calc(-50% + ${state.viewerPan.y}px)) scale(${state.viewerZoom})`;
+}
+function openPhotoViewer(index) { if (!state.viewerPhotos.length) return; state.viewerIndex = Math.max(0, Math.min(index, state.viewerPhotos.length - 1)); state.viewerZoom = 1; state.viewerPan = { x: 0, y: 0 }; ui["photo-viewer"].hidden = false; updatePhotoViewer(); ui["photo-viewer-close"].focus(); }
+function closePhotoViewer() { ui["photo-viewer"].hidden = true; ui["photo-viewer-image"].removeAttribute("src"); }
+function changePhotoViewerIndex(delta) { if (!state.viewerPhotos.length) return; state.viewerIndex = (state.viewerIndex + delta + state.viewerPhotos.length) % state.viewerPhotos.length; state.viewerZoom = 1; state.viewerPan = { x: 0, y: 0 }; updatePhotoViewer(); }
+function setPhotoViewerZoom(value) { state.viewerZoom = Math.max(.25, Math.min(6, value)); updatePhotoViewer(); }
 
 function setPhotoFiles(files, folderName = "") {
   state.files = files;
@@ -118,7 +144,7 @@ function renderMetadata() {
 }
 
 function renderPhotos() {
-  revokeImages(); ui["photo-results"].replaceChildren();
+  revokeImages(); ui["photo-results"].replaceChildren(); state.viewerPhotos = [];
   const progressive = ui["lazy-photo-loading"].checked && "IntersectionObserver" in window;
   if (progressive) {
     state.photoObserver = new IntersectionObserver(entries => {
@@ -144,6 +170,8 @@ function renderPhotos() {
     for (const file of files) {
       const figure = document.createElement("figure"), image = document.createElement("img"), caption = document.createElement("figcaption");
       const url = file.url || URL.createObjectURL(file);
+      const viewerItem = { url, name: file.name, caption: file.webkitRelativePath || file.name }; state.viewerPhotos.push(viewerItem);
+      image.tabIndex = 0; image.role = "button"; image.addEventListener("click", () => openPhotoViewer(state.viewerPhotos.indexOf(viewerItem))); image.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openPhotoViewer(state.viewerPhotos.indexOf(viewerItem)); } });
       if (!file.url) state.imageUrls.push(url); if (progressive) { image.dataset.source = url; state.photoObserver.observe(image); } else image.src = url; image.alt = file.name; caption.textContent = file.webkitRelativePath || file.name; figure.append(image,caption); stack.append(figure);
     }
     ui["photo-results"].append(article);
@@ -155,13 +183,22 @@ function postViewer(message) { ui["tree-viewer"].contentWindow?.postMessage(mess
 function requestPearTreeSelection(names) { if (!state.viewerReady) return; postViewer({ type:"phylophoto:select",tips:names || [] }); setSelection(names || []); }
 function renderTipMatches() {
   const search = ui["tip-search"].value.trim().toLocaleLowerCase();
-  const matches = search ? state.tips.filter(name => name.toLocaleLowerCase().includes(search)).slice(0, 12) : [];
+  state.tipMatches = search ? state.tips.filter(name => name.toLocaleLowerCase().includes(search)) : [];
+  state.tipMatchIndex = Math.min(state.tipMatchIndex, Math.max(0, state.tipMatches.length - 1));
+  const matches = state.tipMatches.slice(0, 12);
   ui["tip-matches"].replaceChildren(...matches.map(name => {
     const button = document.createElement("button");
     button.type = "button"; button.className = "outgroup-match"; button.textContent = name; button.setAttribute("role", "option");
     button.addEventListener("click", () => { ui["tip-search"].value = name; ui["tip-matches"].replaceChildren(); requestPearTreeSelection([name]); showStatus(""); });
     return button;
   }));
+  ui["tip-prev"].disabled = !state.tipMatches.length; ui["tip-next"].disabled = !state.tipMatches.length;
+  ui["tip-match-position"].textContent = state.tipMatches.length ? `${state.tipMatchIndex + 1}/${state.tipMatches.length}` : "";
+}
+function selectTipMatch(index) {
+  if (!state.tipMatches.length) return;
+  state.tipMatchIndex = (index + state.tipMatches.length) % state.tipMatches.length;
+  const name = state.tipMatches[state.tipMatchIndex]; ui["tip-search"].value = name; renderTipMatches(); requestPearTreeSelection([name]); showStatus("");
 }
 
 function currentRootRequest() {
@@ -231,7 +268,7 @@ async function loadTreeText(text, filename) {
   state.sourceTree = extractNewick(text); state.parsedTree = parseNewick(state.sourceTree); state.tips = collectTips(state.parsedTree); state.filename = filename; state.appliedRoot = null;
   ui["outgroup-search"].value = ""; setOutgroups([]); renderOutgroupPicker();
   ui["tree-name"].textContent = filename;
-  for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip"]) ui[id].disabled = false;
+  for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","tip-prev","tip-next","select-tip"]) ui[id].disabled = false;
   ui["tip-search"].value = ""; renderTipMatches();
   await mountTree(); updateFolderMatches(); setSelection([]); showStatus("");
 }
@@ -348,6 +385,56 @@ async function initNasDatasets(autoLoad = true) {
     if (autoLoad && requested && (payload.datasets || []).some(dataset => dataset.id === requested)) { ui["nas-dataset"].value = requested; await loadNasDataset(requested); }
   } catch { /* Static/local-only hosting keeps the original controls unchanged. */ }
 }
+
+function setEditingStatus(message, warning = false) { ui["editing-status"].textContent = message; ui["editing-status"].classList.toggle("warning", warning); ui["editing-status"].hidden = !message; }
+function renameCandidates() {
+  const query = ui["rename-search"].value;
+  if (!query) return [];
+  try {
+    if (ui["rename-search-mode"].value === "regex") return state.tips.filter(tip => new RegExp(query, "u").test(tip));
+    return state.tips.filter(tip => ui["rename-search-mode"].value === "exact" ? tip === query : tip.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  } catch (error) { setEditingStatus(`Invalid search pattern: ${error.message}`, true); return []; }
+}
+function autoRenameValue(tip) {
+  const query = ui["rename-search"].value, replacement = ui["rename-replacement"].value;
+  if (!replacement) return tip;
+  try { return ui["rename-search-mode"].value === "regex" ? tip.replace(new RegExp(query, "u"), replacement) : ui["rename-search-mode"].value === "exact" ? replacement : tip.split(query).join(replacement); } catch { return tip; }
+}
+function renderRenameResults() {
+  ui["rename-results"].replaceChildren(); const candidates = renameCandidates(); if (!candidates.length) return;
+  const table = document.createElement("table"), thead = document.createElement("thead"), head = document.createElement("tr"); ["Use","Current tip","New label"].forEach(text => { const th = document.createElement("th"); th.textContent = text; head.append(th); }); thead.append(head);
+  const body = document.createElement("tbody"); candidates.forEach(tip => { const row = document.createElement("tr"), check = document.createElement("input"), input = document.createElement("input"); check.type = "checkbox"; check.checked = true; input.value = state.renameRows.get(tip)?.to || autoRenameValue(tip); input.dataset.tip = tip; row.dataset.tip = tip; const checkCell = document.createElement("td"), oldCell = document.createElement("td"), newCell = document.createElement("td"); checkCell.append(check); oldCell.textContent = tip; newCell.append(input); row.append(checkCell,oldCell,newCell); body.append(row); });
+  table.append(thead,body); ui["rename-results"].append(table);
+}
+function renderRenameOperations() {
+  ui["rename-operations"].replaceChildren(); if (!state.renameOperations.size) return;
+  const table = document.createElement("table"), thead = document.createElement("thead"), head = document.createElement("tr"); ["Current label","New label",""] .forEach(text => { const th = document.createElement("th"); th.textContent = text; head.append(th); }); thead.append(head);
+  const body = document.createElement("tbody"); state.renameOperations.forEach((to, from) => { const row = document.createElement("tr"), oldCell = document.createElement("td"), newCell = document.createElement("td"), action = document.createElement("td"), remove = document.createElement("button"); oldCell.textContent = from; newCell.textContent = to; remove.type = "button"; remove.textContent = "Remove"; remove.addEventListener("click", () => { state.renameOperations.delete(from); renderRenameOperations(); ui["rename-commit"].disabled = true; }); action.append(remove); row.append(oldCell,newCell,action); body.append(row); });
+  table.append(thead,body); ui["rename-operations"].append(table);
+}
+function addSelectedRenames() {
+  ui["rename-results"].querySelectorAll("tbody tr").forEach(row => { const check = row.querySelector("input[type=checkbox]"), input = row.querySelector("input[data-tip]"); if (check?.checked && input?.value && input.value !== row.dataset.tip) state.renameOperations.set(row.dataset.tip, input.value); });
+  renderRenameOperations(); setEditingStatus(state.renameOperations.size ? `${state.renameOperations.size} rename operation(s) ready for preview.` : "No changed labels selected.");
+}
+async function previewRenames() {
+  if (!state.nasDatasetId) return setEditingStatus("Load a NAS dataset before editing.", true); const operations = [...state.renameOperations].map(([from,to]) => ({from,to})); if (!operations.length) return setEditingStatus("Add at least one rename operation.", true);
+  try { const response = await fetch(`/api/admin/datasets/${encodeURIComponent(state.nasDatasetId)}/rename/preview`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({operations}) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || `Preview failed (${response.status})`); ui["rename-preview-output"].textContent = `Tree: ${payload.treeFilename}\nChanges: ${payload.changes.length}\n\n--- Original ---\n${payload.original}\n--- Updated ---\n${payload.updated}\n\nFolder actions:\n${payload.folders.map(item => `${item.from} -> ${item.to}${item.exists ? " (sync)" : " (folder absent; tree only)"}`).join("\n")}`; ui["rename-preview-output"].hidden = false; ui["rename-commit"].disabled = !payload.changes.length; setEditingStatus("Review the complete preview before writing."); } catch (error) { ui["rename-commit"].disabled = true; setEditingStatus(error.message || String(error), true); }
+}
+async function commitRenames() {
+  if (!state.nasDatasetId || !state.renameOperations.size || !window.confirm("Write these leaf-label changes to the NAS tree and sync matching tip folders?")) return;
+  try { const operations = [...state.renameOperations].map(([from,to]) => ({from,to})); const response = await fetch(`/api/admin/datasets/${encodeURIComponent(state.nasDatasetId)}/rename/commit`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({operations}) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || `Write failed (${response.status})`); state.lastBackupId = payload.backupId; ui["rollback-last-edit"].hidden = false; setEditingStatus(`Wrote ${payload.changes.length} leaf label(s). Backup: ${payload.backupId}`); state.renameOperations.clear(); renderRenameOperations(); ui["rename-commit"].disabled = true; await loadNasDataset(state.nasDatasetId); } catch (error) { setEditingStatus(error.message || String(error), true); }
+}
+async function createTipFolders() {
+  if (!state.nasDatasetId || !window.confirm("Create missing folders for every tip in this NAS tree?")) return;
+  try { const response = await fetch(`/api/admin/datasets/${encodeURIComponent(state.nasDatasetId)}/tip-folders`, { method:"POST", headers:{"Content-Type":"application/json"}, body:"{}" }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || `Folder creation failed (${response.status})`); setEditingStatus(payload.created.length ? `Created ${payload.created.length} tip folder(s).` : "All tip folders already exist."); await loadNasDataset(state.nasDatasetId); } catch (error) { setEditingStatus(error.message || String(error), true); }
+}
+async function rollbackLastEdit() {
+  if (!state.nasDatasetId || !state.lastBackupId || !window.confirm("Restore the last backup and undo the most recent edit?")) return;
+  try { const response = await fetch(`/api/admin/datasets/${encodeURIComponent(state.nasDatasetId)}/rollback`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({backupId:state.lastBackupId}) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || `Rollback failed (${response.status})`); setEditingStatus(`Rolled back backup ${payload.backupId}.`); await loadNasDataset(state.nasDatasetId); } catch (error) { setEditingStatus(error.message || String(error), true); }
+}
+async function initCapabilities() {
+  try { const payload = await fetchJson("/api/capabilities"); state.editingEnabled = Boolean(payload.editing); ui["editing-panel"].hidden = !state.editingEnabled; if (!state.editingEnabled) { ui["editing-disabled-note"].hidden = false; ui["editing-disabled-note"].textContent = "NAS editing is disabled. Set PHYLOPHOTO_ENABLE_EDITING=1 and restart the container to enable it."; } } catch { ui["editing-panel"].hidden = true; }
+}
 function clearTree() {
   postViewer({ type:"phylophoto:clear" }); revokeImages(); Object.assign(state,{ loadId:0,loadedId:0,currentSettings:{},sourceTree:"",filename:"",parsedTree:null,tips:[],selectedTips:[],files:[],photoFolderHandle:null,nasDatasetId:"",folderIndex:new Map(),folderMatches:new Map(),metadata:null,metadataTipColumn:"",appliedRoot:null,pendingRootReport:null });
   ui["tree-empty"].replaceChildren(); const label = document.createElement("label"); label.className = "button primary"; label.htmlFor = "tree-file"; label.textContent = "Open a tree"; ui["tree-empty"].append(label); ui["tree-empty"].hidden = false;
@@ -355,7 +442,7 @@ function clearTree() {
   for (const id of ["tree-file","photo-folder","metadata-file","tip-search","outgroup-search","multiple-outgroups"]) ui[id].value = "";
   ui["tip-matches"].replaceChildren(); renderOutgroupPicker();
   ui["share-dataset"].disabled = true; setDatasetQuery();
-  for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","select-tip","refresh-photo-folder"]) ui[id].disabled = true;
+  for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","tip-prev","tip-next","select-tip","refresh-photo-folder"]) ui[id].disabled = true;
 }
 function updateMatchingControls() { const rule = ui["match-rule"].value; ui["delimiter-wrap"].hidden = rule !== "prefix"; ui["prefix-count-wrap"].hidden = rule !== "prefix"; ui["regex-wrap"].hidden = rule !== "regex"; }
 function updateRootingControls() {
@@ -366,7 +453,7 @@ function updateRootingControls() {
 }
 function startSplit(event) {
   event.preventDefault(); ui.splitter.classList.add("dragging"); document.body.classList.add("dragging");
-  const move = moveEvent => { const rect = ui.workspace.getBoundingClientRect(); setPanelPercent(Math.min(75,Math.max(25,(moveEvent.clientX - rect.left) / rect.width * 100))); };
+  const move = moveEvent => { const rect = ui.workspace.getBoundingClientRect(); const value = verticalLayout() ? (moveEvent.clientY - rect.top) / rect.height * 100 : (moveEvent.clientX - rect.left) / rect.width * 100; setPanelPercent(Math.min(75,Math.max(25,value))); };
   const stop = () => { ui.splitter.classList.remove("dragging"); document.body.classList.remove("dragging"); window.removeEventListener("pointermove",move); saveUiPreferences(); window.dispatchEvent(new Event("resize")); };
   window.addEventListener("pointermove",move); window.addEventListener("pointerup",stop,{ once:true });
 }
@@ -382,6 +469,7 @@ ui["metadata-file"].addEventListener("change",async event => { const file = even
 ui["clear-tree"].addEventListener("click",clearTree);
 ui["select-tip"].addEventListener("click",() => { const name = ui["tip-search"].value.trim(); if (!state.tips.includes(name)) return showStatus(`Tip not found: ${name}`,true); requestPearTreeSelection([name]); showStatus(""); });
 ui["tip-search"].addEventListener("input",renderTipMatches);
+ui["tip-prev"].addEventListener("click",() => selectTipMatch(state.tipMatchIndex - 1)); ui["tip-next"].addEventListener("click",() => selectTipMatch(state.tipMatchIndex + 1));
 document.querySelectorAll('input[name="branch-mode"]').forEach(input => input.addEventListener("change",mountTree));
 ui["save-visual-options"].addEventListener("click",() => {
   state.settingsRequest += 1; postViewer({ type:"phylophoto:get-settings",requestId:state.settingsRequest });
@@ -398,7 +486,17 @@ ui["apply-root"].addEventListener("click",() => applyRoot()); ui.splitter.addEve
 ui["upload-dataset"].addEventListener("click",uploadDataset);
 ui["upload-target"].addEventListener("change",updateUploadTarget);
 ui["lazy-photo-loading"].addEventListener("change",() => { saveUiPreferences(); renderPhotos(); });
-ui.splitter.addEventListener("keydown",event => { if (!["ArrowLeft","ArrowRight"].includes(event.key)) return; event.preventDefault(); setPanelPercent(Math.min(75,Math.max(25,panelPercent() + (event.key === "ArrowRight" ? 2 : -2)))); saveUiPreferences(); });
+ui.splitter.addEventListener("keydown",event => { const vertical = verticalLayout(), allowed = vertical ? ["ArrowUp","ArrowDown"] : ["ArrowLeft","ArrowRight"]; if (!allowed.includes(event.key)) return; event.preventDefault(); const increase = vertical ? event.key === "ArrowDown" : event.key === "ArrowRight"; setPanelPercent(Math.min(75,Math.max(25,panelPercent() + (increase ? 2 : -2)))); saveUiPreferences(); });
+ui["settings-button"].addEventListener("click",() => { ui["settings-drawer"].classList.add("open"); ui["settings-drawer"].setAttribute("aria-hidden","false"); });
+function closeSettings() { ui["settings-drawer"].classList.remove("open"); ui["settings-drawer"].setAttribute("aria-hidden","true"); }
+ui["close-settings"].addEventListener("click",closeSettings); ui["drawer-backdrop"].addEventListener("click",closeSettings);
+ui["language-select"].addEventListener("change",event => applyLanguage(event.target.value));
+ui["rename-search"].addEventListener("input",renderRenameResults); ui["rename-search-mode"].addEventListener("change",renderRenameResults); ui["rename-replacement"].addEventListener("input",renderRenameResults);
+ui["rename-auto-fill"].addEventListener("click",renderRenameResults); ui["rename-add-selected"].addEventListener("click",addSelectedRenames); ui["rename-preview"].addEventListener("click",previewRenames); ui["rename-commit"].addEventListener("click",commitRenames); ui["create-tip-folders"].addEventListener("click",createTipFolders); ui["rollback-last-edit"].addEventListener("click",rollbackLastEdit);
+ui["photo-viewer-close"].addEventListener("click",closePhotoViewer); ui["photo-viewer-prev"].addEventListener("click",() => changePhotoViewerIndex(-1)); ui["photo-viewer-next"].addEventListener("click",() => changePhotoViewerIndex(1)); ui["photo-viewer-zoom-out"].addEventListener("click",() => setPhotoViewerZoom(state.viewerZoom - .25)); ui["photo-viewer-zoom-in"].addEventListener("click",() => setPhotoViewerZoom(state.viewerZoom + .25)); ui["photo-viewer-reset"].addEventListener("click",() => { state.viewerZoom = 1; state.viewerPan = {x:0,y:0}; updatePhotoViewer(); }); ui["photo-viewer"].querySelector(".viewer-backdrop").addEventListener("click",closePhotoViewer);
+ui["photo-viewer-stage"].addEventListener("wheel",event => { event.preventDefault(); setPhotoViewerZoom(state.viewerZoom + (event.deltaY < 0 ? .1 : -.1)); }, { passive:false });
+let photoDrag = null; ui["photo-viewer-stage"].addEventListener("pointerdown",event => { if (event.target !== ui["photo-viewer-image"]) return; photoDrag = {x:event.clientX,y:event.clientY,pan:{...state.viewerPan}}; ui["photo-viewer-stage"].classList.add("dragging"); ui["photo-viewer-stage"].setPointerCapture(event.pointerId); }); ui["photo-viewer-stage"].addEventListener("pointermove",event => { if (!photoDrag) return; state.viewerPan = {x:photoDrag.pan.x + event.clientX - photoDrag.x, y:photoDrag.pan.y + event.clientY - photoDrag.y}; updatePhotoViewer(); }); ui["photo-viewer-stage"].addEventListener("pointerup",() => { photoDrag = null; ui["photo-viewer-stage"].classList.remove("dragging"); });
+window.addEventListener("keydown",event => { if (event.key === "Escape") { if (!ui["photo-viewer"].hidden) closePhotoViewer(); else if (ui["settings-drawer"].classList.contains("open")) closeSettings(); } else if (!ui["photo-viewer"].hidden && event.key === "ArrowLeft") changePhotoViewerIndex(-1); else if (!ui["photo-viewer"].hidden && event.key === "ArrowRight") changePhotoViewerIndex(1); });
 window.addEventListener("message",event => {
   if (event.origin !== window.location.origin || event.source !== ui["tree-viewer"].contentWindow) return;
   const message = event.data || {};
@@ -427,4 +525,4 @@ window.addEventListener("message",event => {
   }
 });
 ui["tree-viewer"].addEventListener("load",() => postViewer({ type:"phylophoto:ping" }));
-window.addEventListener("beforeunload",revokeImages); restoreUiPreferences(); updateRootingControls(); postViewer({ type:"phylophoto:ping" }); initNasDatasets();
+window.addEventListener("beforeunload",revokeImages); applyLanguage(localStorage.getItem("phylophoto-language") || "en"); restoreUiPreferences(); updateRootingControls(); postViewer({ type:"phylophoto:ping" }); initCapabilities(); initNasDatasets();

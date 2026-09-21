@@ -11,7 +11,7 @@
   <header class="app-bar">
     <div class="title-row"><h1>Phylogeny photo browser</h1><span id="tree-name"></span></div>
     <nav class="file-actions" aria-label="Local files">
-      <label class="button" for="tree-file">Open tree</label><input id="tree-file" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain" hidden>
+      <label class="button" data-i18n="openTree" for="tree-file">Open tree</label><input id="tree-file" type="file" accept=".nwk,.newick,.tree,.tre,.nex,.nexus,text/plain" hidden>
       <button id="choose-photo-folder" type="button">Photo folder</button><input id="photo-folder" type="file" webkitdirectory directory multiple hidden>
       <button id="refresh-photo-folder" class="icon-button" type="button" aria-label="Refresh photo folder" title="Refresh photo folder" disabled>↻</button>
       <select id="nas-dataset" aria-label="NAS dataset" title="NAS dataset" hidden><option value="">NAS dataset</option></select>
@@ -19,6 +19,7 @@
       <button id="share-dataset" class="icon-button" type="button" aria-label="Copy dataset share link" title="Copy dataset share link" hidden disabled>🔗</button>
       <label class="button" for="metadata-file">Metadata CSV</label><input id="metadata-file" type="file" accept=".csv,text/csv" hidden>
       <button id="clear-tree" type="button" disabled>Clear</button>
+      <button id="settings-button" class="icon-button" type="button" aria-label="Settings" title="Settings">⚙</button>
     </nav>
   </header>
   <main id="workspace">
@@ -26,8 +27,11 @@
     <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize tree and photo panels" aria-valuemin="25" aria-valuemax="75" tabindex="0"></div>
     <section id="photo-panel" class="panel" aria-label="Sample photos"><div id="selection-summary"></div><section id="metadata-results" hidden></section><div id="photo-results"></div></section>
   </main>
+  <aside id="settings-drawer" aria-label="Settings" aria-hidden="true">
+    <div id="drawer-backdrop"></div><section id="settings-content"><div class="drawer-heading"><h2 data-i18n="settings">Settings</h2><button id="close-settings" class="icon-button" type="button" aria-label="Close settings">×</button></div>
+    <label class="language-picker"><span data-i18n="language">Language</span><select id="language-select"><option value="en">English</option><option value="zh-Hant">繁體中文</option></select></label>
   <section id="bottom-controls">
-    <details id="node-selection-panel"><summary>Node selection</summary><div class="control-grid"><div class="tip-picker"><label>Tip <input id="tip-search" autocomplete="off" placeholder="Type to match a tip" disabled></label><div id="tip-matches" class="outgroup-matches" role="listbox"></div></div><button id="select-tip" type="button" disabled>Select</button></div></details>
+    <details id="node-selection-panel"><summary>Node selection</summary><div class="control-grid"><div class="tip-picker"><label>Tip <input id="tip-search" autocomplete="off" placeholder="Type to match a tip" disabled></label><div id="tip-matches" class="outgroup-matches" role="listbox"></div><div class="tip-navigation"><button id="tip-prev" type="button" disabled>Previous</button><span id="tip-match-position"></span><button id="tip-next" type="button" disabled>Next</button></div></div><button id="select-tip" type="button" disabled>Select</button></div></details>
     <details id="tree-settings-panel"><summary>Tree settings</summary><div class="control-grid"><fieldset><legend>Tree display</legend><label><input type="radio" name="branch-mode" value="original" checked> Original</label><label><input type="radio" name="branch-mode" value="proportional"> Proportional</label><label><input type="radio" name="branch-mode" value="equal"> Equal</label></fieldset><button id="save-visual-options" type="button">Save visual options</button><button id="reset-tree-view" type="button">Reset visual options</button></div></details>
     <details id="folder-settings-panel"><summary>Photo folders <span id="photo-folder-name" class="summary-meta"></span></summary><div class="control-grid">
       <label>Tip-to-folder key <select id="match-rule"><option value="full">Full tip label</option><option value="prefix">Leading fields</option><option value="regex">Regular expression</option></select></label>
@@ -50,6 +54,24 @@
       <button id="apply-root" type="button" disabled>Apply root in PearTree</button><div id="rooting-status" class="status" hidden></div>
     </div></details>
     <details id="folder-warning-panel" hidden><summary id="folder-warning-summary">Folder warnings</summary><div class="table-wrap"><table><thead><tr><th>Tip</th><th>Derived key</th><th>Status</th><th>Candidate folders</th></tr></thead><tbody id="folder-warning-rows"></tbody></table></div></details>
+    <details id="editing-panel" hidden><summary data-i18n="editNas">Edit NAS dataset</summary><div class="control-grid">
+      <p id="editing-disabled-note" class="status" hidden></p>
+      <label>Search tips <input id="rename-search" autocomplete="off" placeholder="Search by tip label"></label>
+      <label>Search mode <select id="rename-search-mode"><option value="contains">Contains</option><option value="exact">Exact</option><option value="regex">Regex</option></select></label>
+      <label>Replacement <input id="rename-replacement" placeholder="New label or $1 replacement"></label>
+      <button id="rename-auto-fill" type="button">Auto-fill results</button><button id="rename-add-selected" type="button">Add selected batch</button>
+      <div id="rename-results" class="table-wrap"></div>
+      <div id="rename-operations" class="table-wrap"></div>
+      <button id="rename-preview" type="button">Preview complete change</button><button id="rename-commit" type="button" disabled>Confirm and write back</button>
+      <button id="create-tip-folders" type="button">Create missing tip folders</button><button id="rollback-last-edit" type="button" hidden>Rollback last edit</button>
+      <pre id="rename-preview-output" class="preview-output" hidden></pre><div id="editing-status" class="status" hidden></div>
+    </div></details>
+  </section>
+    </section>
+  </aside>
+  <section id="photo-viewer" hidden aria-modal="true" role="dialog" aria-label="Photo viewer">
+    <div class="viewer-backdrop"></div><div class="viewer-toolbar"><button id="photo-viewer-close" type="button">×</button><span id="photo-viewer-caption"></span><button id="photo-viewer-prev" type="button">‹</button><button id="photo-viewer-next" type="button">›</button><button id="photo-viewer-zoom-out" type="button">−</button><span id="photo-viewer-zoom">100%</span><button id="photo-viewer-zoom-in" type="button">+</button><button id="photo-viewer-reset" type="button">Reset</button></div>
+    <div id="photo-viewer-stage"><img id="photo-viewer-image" alt=""></div>
   </section>
   <template id="photo-group-template"><article class="photo-group"><h2></h2><div class="photo-stack"></div></article></template>
   <template id="metadata-table-template"><details><summary>Metadata</summary><div class="table-wrap"><table><thead></thead><tbody></tbody></table></div></details></template>
