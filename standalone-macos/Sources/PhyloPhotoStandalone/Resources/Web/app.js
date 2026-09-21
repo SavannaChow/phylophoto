@@ -4,20 +4,20 @@ import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescend
 import { listTreeLabels, parseRenameRules, renameTreeLabels } from "./tree-text.js";
 
 const byId = id => document.getElementById(id);
-const ids = ["tree-file","open-tree-empty","open-tree-default","open-tree-text","tree-tip-search","tree-tip-previous","tree-tip-next","tree-tip-match-status","photo-folder","open-photo-empty","refresh-photo-folder","open-rename","close-rename","cancel-rename","rename-drawer","open-settings","close-settings","settings-drawer","settings-scrim","drawer-resizer","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","photo-empty","selection-summary","photo-results","splitter","tip-search","tip-matches","select-tip","rename-mode","rename-search","rename-suggestions","rename-replacement","rename-replacement-suggestions","rename-photo-folders","rename-batch","rename-match-status","rename-matches","rename-match-rows","preview-rename","apply-rename","rename-status","rename-preview","rename-preview-rows","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","comparison-mode","case-sensitive","lazy-photo-loading","create-tip-folders","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows","app-language"];
+const ids = ["tree-file","open-tree-empty","open-tree-default","open-tree-text","tree-tip-search","tree-tip-previous","tree-tip-next","tree-tip-match-status","photo-folder","open-photo-empty","recent-photo-folders","recent-photo-folder-list","refresh-photo-folder","open-rename","close-rename","cancel-rename","rename-drawer","rename-drawer-resizer","open-settings","close-settings","settings-drawer","settings-scrim","drawer-resizer","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","photo-empty","selection-summary","photo-results","splitter","tip-search","tip-matches","select-tip","rename-mode","rename-search","rename-suggestions","rename-replacement","rename-replacement-suggestions","rename-photo-folders","rename-batch","rename-batch-panel","rename-source","rename-source-label","rename-match-status","rename-matches","rename-match-rows","preview-rename","apply-rename","rename-status","rename-review","rename-actions","rename-preview","rename-preview-rows","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","comparison-mode","case-sensitive","lazy-photo-loading","create-tip-folders","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows","app-language"];
 const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
 const treeEmptyArtwork = byId("tree-empty-art");
-const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", rawTreeText: "", filename: "", treePath: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, photoFolderLoaded: false, folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], photoObserver: null, appliedRoot: null, pendingRootReport: null, renameMatches: null, renamePreview: null, renameSaving: false, renameSuggestions: [], renameSuggestionIndex: -1, replacementSuggestions: [], replacementSuggestionIndex: -1, tipNavigationMatches: [], tipNavigationIndex: -1 };
+const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", rawTreeText: "", filename: "", treePath: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, photoFolderLoaded: false, folderIndex: new Map(), folderMatches: new Map(), recentPhotoFolders: [], imageUrls: [], photoObserver: null, appliedRoot: null, pendingRootReport: null, renameMatches: null, renameSelectedLabel: null, renamePreview: null, renameSaving: false, renameSuggestions: [], renameSuggestionIndex: -1, replacementSuggestions: [], replacementSuggestionIndex: -1, tipNavigationMatches: [], tipNavigationIndex: -1 };
 const I18N = {
   en: { appTitle:"PhyloAtlas", open:"Open", text:"Text", openTree:"Open tree", photoFolder:"Photo folder", refresh:"Refresh photo folder", settings:"Settings", clear:"Clear", nodeSelection:"Node selection", treeSettings:"Tree settings", photoFolders:"Photo folders", rooting:"Rooting / outgroup", folderWarnings:"Folder warnings", language:"Language", systemLanguage:"System default", english:"English", chinese:"繁體中文", tip:"Tip", typeTip:"Type to match a tip", select:"Select", treeDisplay:"Tree display", original:"Original", proportional:"Proportional", equal:"Equal", saveVisual:"Save visual options", resetVisual:"Reset visual options", tipFolderKey:"Tip-to-folder key", fullTip:"Full tip label", leadingFields:"Leading fields", regularExpression:"Regular expression", delimiter:"Delimiter", comparison:"Comparison", equalsKey:"Equals key", startsKey:"Starts with key", caseSensitive:"Case-sensitive", loadOnScroll:"Load photos on scroll", createTipFolders:"Create tree tip folders…", destinationHint:"Choose a destination in Finder; one folder is created for each tree tip.", rootingMode:"Rooting mode", singleOutgroup:"Single outgroup", multipleOutgroups:"Multiple outgroups (MRCA)", midpoint:"Midpoint root", outgroupTips:"Outgroup tip(s)", applyRoot:"Apply root in PearTree", derivedKey:"Derived key", status:"Status", candidateFolders:"Candidate folders", close:"Close settings" },
   zh: { appTitle:"PhyloAtlas", open:"開啟", text:"文字編輯", openTree:"開啟 Tree", photoFolder:"開啟照片資料夾", refresh:"重新讀取照片資料夾", settings:"設定", clear:"清除", nodeSelection:"節點選取", treeSettings:"樹設定", photoFolders:"照片資料夾", rooting:"定根 / 外群", folderWarnings:"資料夾警告", language:"語言", systemLanguage:"系統預設", english:"English", chinese:"繁體中文", tip:"末端節點", typeTip:"輸入以尋找末端節點", select:"選取", treeDisplay:"樹顯示方式", original:"原始", proportional:"比例", equal:"等長", saveVisual:"儲存顯示設定", resetVisual:"重設顯示設定", tipFolderKey:"末端節點－資料夾鍵值", fullTip:"完整末端節點名稱", leadingFields:"前導欄位", regularExpression:"正規表示式", delimiter:"分隔符號", comparison:"比對方式", equalsKey:"完全符合鍵值", startsKey:"以鍵值開頭", caseSensitive:"區分大小寫", loadOnScroll:"捲動時載入照片", createTipFolders:"建立樹末端節點資料夾…", destinationHint:"會先在 Finder 選擇位置，再為每個樹末端節點建立資料夾。", rootingMode:"定根方式", singleOutgroup:"單一外群", multipleOutgroups:"多個外群（MRCA）", midpoint:"中點定根", outgroupTips:"外群末端節點", applyRoot:"在 PearTree 套用定根", derivedKey:"衍生鍵值", status:"狀態", candidateFolders:"候選資料夾", close:"關閉設定" }
 };
-Object.assign(I18N.en, { rename:"Rename", renameNodes:"Rename node labels", renameMode:"Search mode", literal:"Literal text", search:"Search", replace:"Replace with", renamePhotoFolders:"Rename matching photo folders", batchRules:"Batch rules", batchHint:"One rule per line: search => replacement", matchingNodeLabels:"Matching node labels", matchingNodeCount:"distinct node label(s) found.", noMatchingNodes:"No node labels match this search.", searchBeforePreview:"Search node labels before previewing replacements.", preview:"Preview changes", applyRename:"Confirm rename", before:"Before", after:"After", cancel:"Cancel", noRenameChanges:"No node labels would change.", renamePreviewCount:"node label(s) will change. Review the table, then confirm to save.", searchTips:"Search tips", previousTip:"Previous matching tip", nextTip:"Next matching tip", noMatchingTips:"No matches", photoTipCount:"photo tip(s)", loadPhylogenyTree:"Load Phylogeny Tree" });
-Object.assign(I18N.zh, { rename:"重新命名", renameNodes:"重新命名節點標籤", renameMode:"搜尋方式", literal:"一般文字", search:"搜尋", replace:"取代為", renamePhotoFolders:"同步更改對應照片資料夾", batchRules:"批次規則", batchHint:"每行一條規則：搜尋 => 取代為", matchingNodeLabels:"搜尋到的節點標籤", matchingNodeCount:"個不同節點標籤符合搜尋。", noMatchingNodes:"沒有節點標籤符合此搜尋。", searchBeforePreview:"請先搜尋節點標籤，再預覽取代結果。", preview:"預覽更改", applyRename:"確認更名", before:"更改前", after:"更改後", cancel:"取消", noRenameChanges:"沒有節點標籤需要更改。", renamePreviewCount:"個節點標籤將被更改。請檢視列表後確認儲存。", searchTips:"搜尋末端節點", previousTip:"上一個符合的末端節點", nextTip:"下一個符合的末端節點", noMatchingTips:"沒有符合項目", photoTipCount:"個有照片的末端節點", loadPhylogenyTree:"載入 Phylogeny Tree" });
+Object.assign(I18N.en, { rename:"Rename", renameNodes:"Rename tip labels", renameStepFind:"1. Select a node label", renameStepReplace:"2. Set the new label", renameStepReview:"3. Review changes", originalLabel:"Original label", renameMode:"Search mode", literal:"Literal text", search:"Search", replace:"Replace with", renamePhotoFolders:"Rename matching photo folders", batchRename:"Batch rename", batchRules:"Batch rules", batchHint:"One rule per line: search => replacement", matchingNodeLabels:"Matching node labels", matchingNodeCount:"distinct node label(s) found.", noMatchingNodes:"No node labels match this search.", selectNodeBeforePreview:"Select one node label from the search results before previewing changes.", searchBeforePreview:"Search node labels before previewing replacements.", preview:"Preview changes", applyRename:"Confirm rename", before:"Before", after:"After", cancel:"Cancel", noRenameChanges:"No node labels would change.", renamePreviewCount:"node label(s) will change. Review the table, then confirm to save.", searchTips:"Search tips", previousTip:"Previous matching tip", nextTip:"Next matching tip", noMatchingTips:"No matches", photoTipCount:"photo tip(s)", loadPhylogenyTree:"Load Phylogeny Tree", recentPhotoFolders:"Recent photo folders", more:"More…", less:"Show less", noRecentPhotoFolders:"No recent photo folders" });
+Object.assign(I18N.zh, { rename:"重新命名", renameNodes:"重新命名末端節點標籤", renameStepFind:"1. 選擇節點標籤", renameStepReplace:"2. 設定新名稱", renameStepReview:"3. 檢視更改", originalLabel:"原名稱", renameMode:"搜尋方式", literal:"一般文字", search:"搜尋", replace:"取代為", renamePhotoFolders:"同步更改對應照片資料夾", batchRename:"批次更名", batchRules:"批次規則", batchHint:"每行一條規則：搜尋 => 取代為", matchingNodeLabels:"搜尋到的節點標籤", matchingNodeCount:"個不同節點標籤符合搜尋。", noMatchingNodes:"沒有節點標籤符合此搜尋。", selectNodeBeforePreview:"請先從搜尋結果選擇一個節點標籤，再預覽更改。", searchBeforePreview:"請先搜尋節點標籤，再預覽取代結果。", preview:"預覽更改", applyRename:"確認更名", before:"更改前", after:"更改後", cancel:"取消", noRenameChanges:"沒有節點標籤需要更改。", renamePreviewCount:"個節點標籤將被更改。請檢視列表後確認儲存。", searchTips:"搜尋末端節點", previousTip:"上一個符合的末端節點", nextTip:"下一個符合的末端節點", noMatchingTips:"沒有符合項目", photoTipCount:"個有照片的末端節點", loadPhylogenyTree:"載入 Phylogeny Tree", recentPhotoFolders:"最近使用的照片資料夾", more:"更多…", less:"顯示較少", noRecentPhotoFolders:"尚無最近使用的照片資料夾" });
 function languagePreference() { return localStorage.getItem("phylophoto-language") || "system"; }
 function languageCode() { const pref = languagePreference(); return pref === "system" ? (navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en") : pref; }
 function t(key) { return I18N[languageCode()][key] || I18N.en[key] || key; }
-function applyLanguage() { const language = languageCode(); document.documentElement.lang = language === "zh" ? "zh-Hant" : "en"; ui["app-language"].value = languagePreference(); document.querySelectorAll("[data-i18n]").forEach(element => { element.textContent = t(element.dataset.i18n); }); document.querySelectorAll("[data-i18n-title]").forEach(element => { element.title = t(element.dataset.i18nTitle); element.setAttribute("aria-label", t(element.dataset.i18nTitle)); }); document.querySelectorAll("[data-i18n-placeholder]").forEach(element => element.placeholder = t(element.dataset.i18nPlaceholder)); }
+function applyLanguage() { const language = languageCode(); document.documentElement.lang = language === "zh" ? "zh-Hant" : "en"; ui["app-language"].value = languagePreference(); document.querySelectorAll("[data-i18n]").forEach(element => { element.textContent = t(element.dataset.i18n); }); document.querySelectorAll("[data-i18n-title]").forEach(element => { element.title = t(element.dataset.i18nTitle); element.setAttribute("aria-label", t(element.dataset.i18nTitle)); }); document.querySelectorAll("[data-i18n-placeholder]").forEach(element => element.placeholder = t(element.dataset.i18nPlaceholder)); renderRecentPhotoFolders(); }
 
 function nativePost(action, payload = {}) {
   const handler = window.webkit?.messageHandlers?.phylophotoNative;
@@ -67,6 +67,19 @@ function setPhotoFiles(files, folderName = "", folderNames = []) {
   ui["refresh-photo-folder"].disabled = !state.photoFolderHandle;
   ui["create-tip-folders"].disabled = !state.tips.length;
   updateFolderMatches();
+}
+
+function renderRecentPhotoFolders() {
+  const folders = state.recentPhotoFolders;
+  ui["recent-photo-folder-list"].replaceChildren(...folders.map(folder => {
+    const button = document.createElement("button"); button.type = "button"; button.className = "recent-photo-folder";
+    const name = document.createElement("span"); name.className = "recent-photo-folder-name"; name.textContent = folder.name;
+    const path = document.createElement("span"); path.className = "recent-photo-folder-path"; path.textContent = folder.path;
+    button.title = folder.path; button.setAttribute("aria-label", `${folder.name}: ${folder.path}`);
+    button.append(name, path); button.addEventListener("click", () => nativePost("openRecentPhotoFolder", { path: folder.path, hasTree: Boolean(state.sourceTree) }));
+    return button;
+  }));
+  ui["recent-photo-folders"].hidden = !folders.length;
 }
 
 async function filesFromDirectory(handle, path = handle.name) {
@@ -299,9 +312,12 @@ function renderRenameSuggestionSelection() {
   [...ui["rename-suggestions"].children].forEach((button, index) => button.classList.toggle("is-active", index === state.renameSuggestionIndex));
   const active = ui["rename-suggestions"].children[state.renameSuggestionIndex]; active?.scrollIntoView({ block: "nearest" });
 }
-function chooseRenameSuggestion(index) {
-  const label = state.renameSuggestions[index]; if (!label) return;
-  ui["rename-search"].value = label; ui["rename-replacement"].value = label; resetRenamePanel(); hideRenameSuggestions(); searchRenameNodes(); ui["rename-replacement"].focus();
+function chooseRenameSuggestion(index) { selectRenameLabel(state.renameSuggestions[index]); }
+function selectRenameLabel(label) {
+  if (!label) return;
+  ui["rename-mode"].value = "literal"; ui["rename-search"].value = label; ui["rename-replacement"].value = label; ui["rename-batch"].value = ""; ui["rename-batch-panel"].open = false;
+  resetRenamePanel(); state.renameSelectedLabel = label; ui["rename-source-label"].textContent = label; ui["rename-source"].hidden = false;
+  hideRenameSuggestions(); searchRenameNodes(); ui["rename-replacement"].focus();
 }
 function hideReplacementSuggestions() { state.replacementSuggestions = []; state.replacementSuggestionIndex = -1; ui["rename-replacement-suggestions"].replaceChildren(); ui["rename-replacement-suggestions"].hidden = true; ui["rename-replacement"].setAttribute("aria-expanded", "false"); }
 function replacementSuggestions() {
@@ -319,9 +335,9 @@ function replacementSuggestions() {
 }
 function renderReplacementSuggestionSelection() { [...ui["rename-replacement-suggestions"].children].forEach((button, index) => button.classList.toggle("is-active", index === state.replacementSuggestionIndex)); ui["rename-replacement-suggestions"].children[state.replacementSuggestionIndex]?.scrollIntoView({ block:"nearest" }); }
 function chooseReplacementSuggestion(index) { const label = state.replacementSuggestions[index]; if (!label) return; ui["rename-replacement"].value = label; resetRenamePreview(); hideReplacementSuggestions(); ui["rename-replacement"].focus(); }
-function resetRenamePreview() { state.renamePreview = null; state.renameSaving = false; ui["rename-preview"].hidden = true; ui["rename-preview-rows"].replaceChildren(); ui["apply-rename"].disabled = true; setRenameStatus(""); }
-function resetRenamePanel() { state.renameMatches = null; ui["rename-matches"].hidden = true; ui["rename-match-rows"].replaceChildren(); ui["rename-match-status"].hidden = true; ui["rename-match-status"].classList.remove("warning"); hideReplacementSuggestions(); resetRenamePreview(); }
-function clearRenamePanel() { ui["rename-mode"].value = "literal"; ui["rename-search"].value = ""; ui["rename-replacement"].value = ""; ui["rename-photo-folders"].checked = true; ui["rename-batch"].value = ""; hideRenameSuggestions(); hideReplacementSuggestions(); resetRenamePanel(); }
+function resetRenamePreview() { state.renamePreview = null; state.renameSaving = false; ui["rename-review"].hidden = true; ui["rename-actions"].hidden = true; ui["rename-preview"].hidden = true; ui["rename-preview-rows"].replaceChildren(); ui["apply-rename"].disabled = true; setRenameStatus(""); }
+function resetRenamePanel() { state.renameMatches = null; state.renameSelectedLabel = null; ui["rename-source"].hidden = true; ui["rename-source-label"].textContent = ""; ui["rename-matches"].hidden = true; ui["rename-match-rows"].replaceChildren(); ui["rename-match-status"].hidden = true; ui["rename-match-status"].classList.remove("warning"); hideReplacementSuggestions(); resetRenamePreview(); }
+function clearRenamePanel() { ui["rename-mode"].value = "literal"; ui["rename-search"].value = ""; ui["rename-replacement"].value = ""; ui["rename-photo-folders"].checked = true; ui["rename-batch"].value = ""; ui["rename-batch-panel"].open = false; hideRenameSuggestions(); hideReplacementSuggestions(); resetRenamePanel(); }
 function searchRenameNodes() {
   try {
     const rules = parseRenameRules({ search: ui["rename-search"].value, replacement: "", batch: ui["rename-batch"].value, regex: ui["rename-mode"].value === "regex" });
@@ -330,7 +346,8 @@ function searchRenameNodes() {
       rule.matcher.lastIndex = 0; return rule.matcher.test(label);
     }));
     state.renameMatches = matches;
-    ui["rename-match-rows"].replaceChildren(...matches.map(label => { const row = document.createElement("tr"), cell = document.createElement("td"); cell.textContent = label; row.append(cell); return row; }));
+    const batchMode = Boolean(ui["rename-batch"].value.trim());
+    ui["rename-match-rows"].replaceChildren(...matches.map(label => { const row = document.createElement("tr"), cell = document.createElement("td"); if (batchMode) cell.textContent = label; else { const button = document.createElement("button"); button.type = "button"; button.className = "rename-match"; button.textContent = label; button.addEventListener("click", () => selectRenameLabel(label)); cell.append(button); } row.append(cell); return row; }));
     ui["rename-matches"].hidden = !matches.length;
     ui["rename-match-status"].classList.remove("warning");
     ui["rename-match-status"].textContent = matches.length ? `${matches.length} ${t("matchingNodeCount")}` : t("noMatchingNodes");
@@ -340,6 +357,7 @@ function searchRenameNodes() {
 }
 function buildRenamePreview() {
   if (!state.treePath || !state.rawTreeText) throw new Error("Open a tree file first.");
+  if (!ui["rename-batch"].value.trim() && !state.renameSelectedLabel) throw new Error(t("selectNodeBeforePreview"));
   const rules = parseRenameRules({ search: ui["rename-search"].value, replacement: ui["rename-replacement"].value, batch: ui["rename-batch"].value, regex: ui["rename-mode"].value === "regex" });
   const result = renameTreeLabels(state.rawTreeText, rules);
   if (result.changes.length) parseNewick(extractNewick(result.text));
@@ -350,10 +368,10 @@ function previewRename() {
     if (state.renameMatches === null) throw new Error(t("searchBeforePreview"));
     const result = buildRenamePreview(); state.renamePreview = result;
     ui["rename-preview-rows"].replaceChildren(...result.changes.map(change => { const row = document.createElement("tr"), before = document.createElement("td"), after = document.createElement("td"); before.textContent = change.before; after.textContent = change.after; row.append(before,after); return row; }));
-    ui["rename-preview"].hidden = !result.changes.length;
+    ui["rename-review"].hidden = false; ui["rename-preview"].hidden = !result.changes.length; ui["rename-actions"].hidden = !result.changes.length;
     setRenameStatus(result.changes.length ? `${result.changes.length} ${t("renamePreviewCount")}` : t("noRenameChanges"));
     ui["apply-rename"].disabled = !result.changes.length;
-  } catch (error) { state.renamePreview = null; ui["rename-preview"].hidden = true; ui["apply-rename"].disabled = true; setRenameStatus(error.message || String(error), true); }
+  } catch (error) { state.renamePreview = null; ui["rename-review"].hidden = false; ui["rename-actions"].hidden = true; ui["rename-preview"].hidden = true; ui["apply-rename"].disabled = true; setRenameStatus(error.message || String(error), true); }
 }
 function applyRename() {
   if (!state.renamePreview) return previewRename();
@@ -372,11 +390,14 @@ async function loadTree(file) {
 function receiveNativeMessage(message) {
   if (!message || typeof message !== "object") return;
   if (message.type === "tree") {
-    const closeRename = state.renameSaving;
-    loadTreeText(message.text || "", message.filename || "tree.nwk", message.path || "").then(() => { if (closeRename) { resetRenamePanel(); setRenameDrawer(false); } }).catch(error => showStatus(`Could not open tree: ${error.message || error}`, true));
+    const completedRename = state.renameSaving;
+    loadTreeText(message.text || "", message.filename || "tree.nwk", message.path || "").then(() => { if (completedRename) { clearRenamePanel(); setRenameDrawer(true); } }).catch(error => showStatus(`Could not open tree: ${error.message || error}`, true));
   } else if (message.type === "photoFolder") {
     state.photoFolderHandle = { native: true };
     setPhotoFiles(Array.isArray(message.files) ? message.files : [], message.name || "", Array.isArray(message.folders) ? message.folders : []);
+  } else if (message.type === "recentPhotoFolders") {
+    state.recentPhotoFolders = (Array.isArray(message.folders) ? message.folders : []).filter(folder => typeof folder?.name === "string" && typeof folder?.path === "string");
+    renderRecentPhotoFolders();
   } else if (message.type === "foldersCreated") {
     const extra = Number(message.skipped || 0) ? `; skipped ${message.skipped} invalid label(s)` : "";
     const failures = Array.isArray(message.failed) && message.failed.length ? `; could not create ${message.failed.length}` : "";
@@ -420,7 +441,7 @@ function startSplit(event) {
 }
 function startDrawerResize(event) {
   if (event.button !== 0) return;
-  event.preventDefault(); const resizer = ui["drawer-resizer"]; document.body.classList.add("drawer-resizing"); resizer.setPointerCapture?.(event.pointerId);
+  event.preventDefault(); const resizer = event.currentTarget; document.body.classList.add("drawer-resizing"); resizer.setPointerCapture?.(event.pointerId);
   const move = moveEvent => setDrawerWidth(window.innerWidth - moveEvent.clientX);
   let finished = false;
   const stop = () => {
@@ -447,11 +468,13 @@ ui["close-rename"].addEventListener("click",() => { clearRenamePanel(); setRenam
 ui["cancel-rename"].addEventListener("click",() => { clearRenamePanel(); setRenameDrawer(false); });
 ui["settings-scrim"].addEventListener("click",() => { if (!ui["rename-drawer"].classList.contains("is-open")) setSettingsDrawer(false); });
 ui["app-language"].addEventListener("change",() => { localStorage.setItem("phylophoto-language", ui["app-language"].value); applyLanguage(); updateFolderMatches(); });
-ui["drawer-resizer"].addEventListener("pointerdown",startDrawerResize);
-ui["drawer-resizer"].addEventListener("keydown",event => {
-  if (! ["ArrowLeft","ArrowRight"].includes(event.key)) return;
-  event.preventDefault(); setDrawerWidth(currentDrawerWidth() + (event.key === "ArrowLeft" ? 20 : -20)); saveUiPreferences();
-});
+for (const resizer of [ui["drawer-resizer"],ui["rename-drawer-resizer"]]) {
+  resizer.addEventListener("pointerdown",startDrawerResize);
+  resizer.addEventListener("keydown",event => {
+    if (! ["ArrowLeft","ArrowRight"].includes(event.key)) return;
+    event.preventDefault(); setDrawerWidth(currentDrawerWidth() + (event.key === "ArrowLeft" ? 20 : -20)); saveUiPreferences();
+  });
+}
 ui["clear-tree"].addEventListener("click",clearTree);
 ui["tree-tip-search"].addEventListener("input", updateTipNavigator);
 ui["tree-tip-search"].addEventListener("keydown", event => { if (event.key === "Enter" || event.key === "ArrowDown") { event.preventDefault(); moveTipNavigator(1); } else if (event.key === "ArrowUp") { event.preventDefault(); moveTipNavigator(-1); } });
@@ -538,6 +561,6 @@ window.addEventListener("message",event => {
   }
 });
 ui["tree-viewer"].addEventListener("load",() => postViewer({ type:"phylophoto:ping" }));
-window.addEventListener("beforeunload",revokeImages); restoreUiPreferences(); applyLanguage(); setDrawerWidth(currentDrawerWidth()); updateRootingControls(); postViewer({ type:"phylophoto:ping" });
+window.addEventListener("beforeunload",revokeImages); restoreUiPreferences(); applyLanguage(); setDrawerWidth(currentDrawerWidth()); updateRootingControls(); nativePost("loadRecentPhotoFolders"); postViewer({ type:"phylophoto:ping" });
 window.addEventListener("keydown",event => { if (event.key === "Escape" && !ui["rename-drawer"].classList.contains("is-open")) setSettingsDrawer(false); });
 window.addEventListener("resize",() => setDrawerWidth(currentDrawerWidth()));

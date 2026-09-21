@@ -53,9 +53,9 @@ body.dragging,body.drawer-resizing { cursor: col-resize !important; user-select:
 #settings-scrim { position: fixed; z-index: 90; inset: 0; display: none; }
 #settings-scrim.is-open { display: block; }
 #settings-drawer.is-open,#rename-drawer.is-open { transform: translateX(0); }
-#drawer-resizer { position: absolute; z-index: 2; top: 0; bottom: 0; left: -7px; width: 14px; cursor: col-resize; touch-action: none; }
-#drawer-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 6px; width: 2px; background: transparent; transition: background .15s ease, width .15s ease, left .15s ease; }
-#drawer-resizer:hover::after,body.drawer-resizing #drawer-resizer::after { left: 4px; width: 4px; background: var(--accent); }
+#drawer-resizer,#rename-drawer-resizer { position: absolute; z-index: 2; top: 0; bottom: 0; left: -7px; width: 14px; cursor: col-resize; touch-action: none; }
+#drawer-resizer::after,#rename-drawer-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 6px; width: 2px; background: transparent; transition: background .15s ease, width .15s ease, left .15s ease; }
+#drawer-resizer:hover::after,#rename-drawer-resizer:hover::after,body.drawer-resizing #drawer-resizer::after,body.drawer-resizing #rename-drawer-resizer::after { left: 4px; width: 4px; background: var(--accent); }
 .drawer-header { display: flex; align-items: center; justify-content: space-between; min-height: 3.65rem; padding: .7rem 1rem; border-bottom: 1px solid var(--line); }
 .drawer-header h2 { margin: 0; font-size: 1.16rem; letter-spacing: -.02em; }
 .drawer-content { min-height: 0; overflow-y: auto; overflow-x: hidden; display: grid; align-content: start; gap: .6rem; padding: .85rem; }
@@ -112,6 +112,18 @@ h1 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro T
 #tree-empty > button,#photo-empty > button { border: 1.5px solid #16856a; background: #fff; color: #0b6b51; box-shadow: 0 2px 8px rgba(0,0,0,.09); font-weight: 600; }
 #tree-empty > button:hover,#photo-empty > button:hover { border-color: #0d6f57; background: #eaf7f2; color: #075440; }
 #tree-empty > button:hover,#photo-empty > button:hover { transform: translateX(-50%); }
+.photo-empty-content { position: absolute; inset: 0; }
+.photo-empty-content > #open-photo-empty { position: absolute; z-index: 1; left: 50%; bottom: 14%; transform: translateX(-50%); border: 1.5px solid #16856a; background: #fff; color: #0b6b51; box-shadow: 0 2px 8px rgba(0,0,0,.09); font-weight: 600; }
+.photo-empty-content > #open-photo-empty:hover { border-color: #0d6f57; background: #eaf7f2; color: #075440; }
+.recent-photo-folders { position: absolute; right: 9%; bottom: calc(14% + 3.6rem); left: 9%; }
+.recent-photo-folders h2 { margin: 0 0 .45rem; color: var(--muted); font-size: .82rem; font-weight: 600; }
+#recent-photo-folder-list { display: grid; height: max(20.25rem, calc(50dvh - 1.55rem)); overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 8px; padding: .28rem .7rem; }
+.recent-photo-folder { display: flex; align-items: baseline; min-width: 0; gap: .25rem; min-height: 1.95rem; padding: .25rem 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--accent); font-size: .84rem; font-weight: 500; text-align: left; box-shadow: none; }
+.recent-photo-folder:last-child { border-bottom: 0; }
+.recent-photo-folder:hover { background: transparent !important; color: var(--accent-pressed); text-decoration: underline; box-shadow: none !important; }
+.recent-photo-folder-name { overflow-wrap: anywhere; }
+.recent-photo-folder-path { min-width: 0; overflow: hidden; color: var(--muted); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.photo-empty-divider { position: absolute; right: 9%; bottom: calc(14% + 2.72rem); left: 9%; border-top: 1px solid var(--line); }
 #splitter::after { top: 0; bottom: 0; left: 0; width: 1px; background: var(--line); }
 #splitter:hover::after,#splitter.dragging::after { left: -1px; width: 3px; background: #b7b7b9; }
 .photo-group { margin-top: .7rem; padding-top: .7rem; }
@@ -125,7 +137,20 @@ summary { padding: .78rem .9rem; font-size: .9rem; font-weight: 600; }
 .control-grid { gap: .6rem; padding: .1rem .9rem .85rem; }
 .setting-hint { flex-basis: 100%; color: var(--muted); font-size: .8rem; line-height: 1.35; }
 .rename-batch { flex-basis: 100%; }
+.rename-workflow { align-items: stretch; gap: 0; padding: 0; }
+.rename-section { flex-basis: 100%; display: grid; gap: .65rem; padding: .9rem; border-bottom: 1px solid var(--line); }
+.rename-section h3 { margin: 0; font-size: .9rem; font-weight: 600; }
+.rename-fields { display: flex; align-items: end; flex-wrap: wrap; gap: .6rem; }
+.rename-source { display: flex; align-items: baseline; gap: .55rem; color: var(--muted); font-size: .84rem; }
+.rename-source output { color: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.rename-batch-panel { flex-basis: 100%; }
+.rename-batch-panel > label { display: grid; gap: .3rem; padding: 0 .9rem .9rem; }
+.rename-match { display: block; width: 100%; min-height: 0; padding: .12rem 0; border: 0; border-radius: 0; background: transparent; color: inherit; text-align: left; box-shadow: none; }
+.rename-match:hover { background: transparent !important; color: var(--accent); text-decoration: underline; box-shadow: none !important; }
 .rename-search-field { position: relative; }
+.rename-replacement-field { display: flex; align-items: end; gap: .45rem; min-width: 0; }
+.rename-replacement-field > label { min-width: 0; flex: 1 1 14rem; }
+.rename-replacement-field > button { flex: 0 0 auto; }
 .rename-suggestions { position: absolute; z-index: 4; top: calc(100% - .05rem); left: 0; right: 0; max-height: 14rem; overflow: auto; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); box-shadow: 0 10px 24px rgba(0,0,0,.12); }
 .rename-suggestion { display: block; width: 100%; padding: .48rem .62rem; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; color: inherit; text-align: left; font: inherit; }
 .rename-suggestion:last-child { border-bottom: 0; }
@@ -134,8 +159,9 @@ summary { padding: .78rem .9rem; font-size: .9rem; font-weight: 600; }
 #rename-preview table,#rename-matches table { min-width: 100%; }
 #rename-preview th,#rename-matches th { position: sticky; top: 0; background: var(--surface); }
 #rename-matches { max-height: min(28dvh, 18rem); }
+.rename-actions { flex-basis: 100%; display: flex; justify-content: flex-end; gap: .55rem; align-items: center; padding-top: .15rem; }
 .control-grid input:not([type=radio]):not([type=checkbox]),.control-grid select,.control-grid textarea,.outgroup-picker input,.tip-picker input { border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; box-shadow: none; }
 .outgroup-chip { border-color: #c8e8dc; background: var(--accent-soft); }
 .status { border-radius: 0; background: var(--surface-soft); }
-#drawer-resizer:hover::after,body.drawer-resizing #drawer-resizer::after { background: #b7b7b9; }
+#drawer-resizer:hover::after,#rename-drawer-resizer:hover::after,body.drawer-resizing #drawer-resizer::after,body.drawer-resizing #rename-drawer-resizer::after { background: #b7b7b9; }
 @media (prefers-color-scheme: dark) { :root { color: #ececec; background: #212121; --surface: #212121; --surface-strong: #212121; --surface-soft: #2b2b2b; --line: #353535; --line-strong: #4a4a4a; --muted: #a5a5a5; --accent-soft: #163d34; } html,body,body { background: #212121; } .app-bar,.panel,.panel-empty,#settings-drawer,details { background: #212121; } .button,button { background: transparent; } .button:hover,button:hover:not(:disabled),button.is-active { background: #303030; } .button:active,button:active:not(:disabled) { background: #3b3b3b; } .button.primary,button.primary { background: #ececec; color: #202020; } .button.primary:hover,button.primary:hover:not(:disabled) { background: #fff; } .control-grid input:not([type=radio]):not([type=checkbox]),.control-grid select,.control-grid textarea,.outgroup-picker input,.tip-picker input { background: #2a2a2a; border-color: var(--line-strong); } }

@@ -181,6 +181,7 @@ struct PhyloPhotoWebView: NSViewRepresentable {
         private var treeURL: URL?
         private var photoRoot: URL?
         private var photoViewer: NativePhotoViewer?
+        private let recentPhotoFolderDefaultsKey = "PhyloAtlas.recentPhotoFolders"
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard message.name == "phylophotoNative", let body = message.body as? [String: Any], let action = body["action"] as? String else { return }
@@ -192,6 +193,8 @@ struct PhyloPhotoWebView: NSViewRepresentable {
             case "chooseTree": chooseTree(language: body["language"] as? String)
             case "openTree": openTree(mode: body["mode"] as? String)
             case "choosePhotoFolder": choosePhotoFolder(language: body["language"] as? String, hasTree: body["hasTree"] as? Bool ?? false)
+            case "loadRecentPhotoFolders": sendRecentPhotoFolders()
+            case "openRecentPhotoFolder": openRecentPhotoFolder(path: body["path"] as? String, language: body["language"] as? String, hasTree: body["hasTree"] as? Bool ?? false)
             case "refreshPhotoFolder": refreshPhotoFolder()
             case "openPhotoFolder": openPhotoFolder(body["folderName"] as? String)
             case "openPhoto": openPhoto(body["url"] as? String)
@@ -354,8 +357,44 @@ struct PhyloPhotoWebView: NSViewRepresentable {
             panel.allowsMultipleSelection = false
             guard panel.runModal() == .OK, let url = panel.url else { return }
             photoRoot = url.standardizedFileURL
+            rememberPhotoFolder(photoRoot!)
             sendPhotoFolder()
             if !hasTree { discoverTree(in: photoRoot!, language: language) }
+        }
+
+        private func openRecentPhotoFolder(path: String?, language: String?, hasTree: Bool) {
+            guard let path, !path.isEmpty else { return }
+            let url = URL(fileURLWithPath: path).standardizedFileURL
+            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                send(["type": "error", "message": localized("That recent photo folder is no longer available.", "該最近使用的照片資料夾已不存在或無法讀取。", language: language)])
+                sendRecentPhotoFolders()
+                return
+            }
+            photoRoot = url
+            rememberPhotoFolder(url)
+            sendPhotoFolder()
+            if !hasTree { discoverTree(in: url, language: language) }
+        }
+
+        private func rememberPhotoFolder(_ url: URL) {
+            let path = url.standardizedFileURL.path
+            var paths = UserDefaults.standard.stringArray(forKey: recentPhotoFolderDefaultsKey) ?? []
+            paths.removeAll { $0 == path }
+            paths.insert(path, at: 0)
+            UserDefaults.standard.set(Array(paths.prefix(30)), forKey: recentPhotoFolderDefaultsKey)
+            sendRecentPhotoFolders()
+        }
+
+        private func sendRecentPhotoFolders() {
+            let paths = UserDefaults.standard.stringArray(forKey: recentPhotoFolderDefaultsKey) ?? []
+            let folders = paths.compactMap { path -> [String: String]? in
+                let url = URL(fileURLWithPath: path).standardizedFileURL
+                guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return nil }
+                return ["name": url.lastPathComponent, "path": url.path]
+            }
+            let validPaths = folders.compactMap { $0["path"] }
+            if validPaths != paths { UserDefaults.standard.set(validPaths, forKey: recentPhotoFolderDefaultsKey) }
+            send(["type": "recentPhotoFolders", "folders": folders])
         }
 
         private func discoverTree(in root: URL, language: String?) {
