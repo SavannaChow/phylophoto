@@ -88,6 +88,7 @@ th,td { padding: .35rem .45rem; border-bottom: 1px solid var(--line); text-align
 .language-picker { display: flex; align-items: center; justify-content: space-between; gap: .7rem; margin: .5rem 0 .65rem; font-size: .86rem; }
 .language-picker select { min-width: 9rem; border: 1px solid #94a3b8; border-radius: .3rem; padding: .35rem .45rem; background: var(--surface); }
 #settings-content #bottom-controls { padding-top: 0; }
+#editing-panel.is-disabled .control-grid > :not(#editing-disabled-note) { opacity: .5; }
 #photo-viewer { position: fixed; inset: 0; z-index: 120; }
 #photo-viewer[hidden] { display: none; }
 .viewer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.86); }

@@ -66,6 +66,7 @@ function applyLanguage(language = ui["language-select"].value) {
   document.querySelectorAll("[data-i18n]").forEach(node => { const key = node.dataset.i18n; if (translations[selected][key]) node.textContent = translations[selected][key]; });
   document.querySelectorAll("[data-i18n-placeholder]").forEach(node => { const key = node.dataset.i18nPlaceholder; if (translations[selected][key]) node.placeholder = translations[selected][key]; });
   localStorage.setItem("phylophoto-language", selected);
+  updateEditingAvailability();
 }
 
 function matchingOptions() {
@@ -127,6 +128,7 @@ function leaveNasDataset() {
   state.nasDatasetId = "";
   ui["share-dataset"].disabled = true;
   setDatasetQuery();
+  updateEditingAvailability();
 }
 
 async function filesFromDirectory(handle, path = handle.name) {
@@ -357,9 +359,9 @@ async function loadNasDataset(datasetId) {
       state.metadata = parseCsv(await metadataResponse.text());
       state.metadataTipColumn = state.metadata.headers.find(header => state.metadata.rows.some(row => state.tips.includes(row[header]))) || state.metadata.headers[0] || "";
     }
-    ui["nas-dataset"].value = dataset.id; ui["share-dataset"].disabled = false; setDatasetQuery(dataset.id); renderMetadata();
+    ui["nas-dataset"].value = dataset.id; ui["share-dataset"].disabled = false; setDatasetQuery(dataset.id); updateEditingAvailability(); renderMetadata();
   } catch (error) {
-    state.nasDatasetId = ""; ui["share-dataset"].disabled = true; ui["tree-empty"].hidden = false; ui["tree-empty"].textContent = `Could not load NAS dataset: ${error.message || error}`;
+    state.nasDatasetId = ""; ui["share-dataset"].disabled = true; updateEditingAvailability(); ui["tree-empty"].hidden = false; ui["tree-empty"].textContent = `Could not load NAS dataset: ${error.message || error}`;
   } finally { ui["load-nas-dataset"].disabled = !ui["nas-dataset"].value; }
 }
 
@@ -487,19 +489,25 @@ async function rollbackLastEdit() {
   try { const response = await fetch(`/api/admin/datasets/${encodeURIComponent(state.nasDatasetId)}/rollback`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({backupId:state.lastBackupId}) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || `Rollback failed (${response.status})`); setEditingStatus(`Rolled back backup ${payload.backupId}.`); await loadNasDataset(state.nasDatasetId); } catch (error) { setEditingStatus(error.message || String(error), true); }
 }
 async function initCapabilities() {
-  const controls = () => ui["editing-panel"].querySelectorAll("input, select, button");
   try {
     const payload = await fetchJson("/api/capabilities");
     state.editingEnabled = Boolean(payload.editing);
-    controls().forEach(control => { control.disabled = !state.editingEnabled; });
-    ui["editing-disabled-note"].hidden = state.editingEnabled;
-    ui["editing-summary-meta"].textContent = state.editingEnabled ? "" : "Disabled";
-    if (!state.editingEnabled) ui["editing-disabled-note"].textContent = "NAS editing is disabled. Set PHYLOPHOTO_ENABLE_EDITING=1 and restart the container to enable it.";
+    updateEditingAvailability();
   } catch {
-    state.editingEnabled = false; controls().forEach(control => { control.disabled = true; });
-    ui["editing-disabled-note"].hidden = false; ui["editing-summary-meta"].textContent = "Unavailable";
-    ui["editing-disabled-note"].textContent = "NAS editing is unavailable from this server.";
+    state.editingEnabled = false; updateEditingAvailability();
   }
+}
+function updateEditingAvailability() {
+  const available = state.editingEnabled && Boolean(state.nasDatasetId);
+  ui["editing-panel"].classList.toggle("is-disabled", !available);
+  ui["editing-panel"].querySelectorAll("input, select, button").forEach(control => { control.disabled = !available; });
+  ui["editing-disabled-note"].hidden = available;
+  ui["editing-summary-meta"].textContent = available ? "" : "Disabled";
+  if (available) return;
+  const chinese = document.documentElement.lang === "zh-Hant";
+  ui["editing-disabled-note"].textContent = state.editingEnabled
+    ? (chinese ? "目前使用本機檔案；瀏覽器檔案權限不允許直接重新命名，功能暫時停用。請 Load NAS dataset 後使用。" : "Local files are loaded. Browser file permissions do not allow direct rename, so this feature is temporarily disabled. Load a NAS dataset to use it.")
+    : (chinese ? "此伺服器目前無法使用 NAS 更名功能。" : "NAS rename is unavailable from this server.");
 }
 function clearTree() {
   postViewer({ type:"phylophoto:clear" }); revokeImages(); Object.assign(state,{ loadId:0,loadedId:0,currentSettings:{},sourceTree:"",filename:"",parsedTree:null,tips:[],selectedTips:[],files:[],photoFolderHandle:null,nasDatasetId:"",folderIndex:new Map(),folderMatches:new Map(),metadata:null,metadataTipColumn:"",appliedRoot:null,pendingRootReport:null });
@@ -508,6 +516,7 @@ function clearTree() {
   for (const id of ["tree-file","photo-folder","metadata-file","tip-search","outgroup-search","multiple-outgroups"]) ui[id].value = "";
   ui["tip-matches"].replaceChildren(); renderOutgroupPicker();
   ui["share-dataset"].disabled = true; setDatasetQuery();
+  updateEditingAvailability();
   for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","tip-prev","tip-next","select-tip","refresh-photo-folder"]) ui[id].disabled = true;
 }
 function updateMatchingControls() { const rule = ui["match-rule"].value; ui["delimiter-wrap"].hidden = rule !== "prefix"; ui["prefix-count-wrap"].hidden = rule !== "prefix"; ui["regex-wrap"].hidden = rule !== "regex"; }
