@@ -3,7 +3,7 @@
 import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseCsv, parseNewick, transformBranchLengths } from "./core.js";
 
 const byId = id => document.getElementById(id);
-const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","nas-dataset","load-nas-dataset","share-dataset","nas-upload-panel","upload-target","upload-dataset-id","upload-tree-file","upload-photo-folder","upload-metadata-file","upload-dataset","upload-progress","upload-status","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","tip-prev","tip-next","tip-match-position","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","comparison-mode","case-sensitive","lazy-photo-loading","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows","settings-button","settings-drawer","drawer-backdrop","settings-content","close-settings","language-select","editing-panel","editing-disabled-note","rename-search","rename-search-mode","rename-replacement","rename-auto-fill","rename-add-selected","rename-results","rename-operations","rename-preview","rename-commit","create-tip-folders","rollback-last-edit","rename-preview-output","editing-status","photo-viewer","photo-viewer-close","photo-viewer-prev","photo-viewer-next","photo-viewer-zoom-out","photo-viewer-zoom-in","photo-viewer-reset","photo-viewer-zoom","photo-viewer-caption","photo-viewer-stage","photo-viewer-image"];
+const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","nas-dataset","load-nas-dataset","share-dataset","nas-upload-panel","upload-target","upload-dataset-id","upload-tree-file","upload-photo-folder","upload-metadata-file","upload-dataset","upload-progress","upload-status","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","tip-prev","tip-next","tip-match-position","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","comparison-mode","case-sensitive","lazy-photo-loading","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows","settings-button","settings-drawer","drawer-backdrop","settings-shell","settings-content","settings-resizer","close-settings","language-select","editing-panel","editing-summary-meta","editing-disabled-note","rename-search","rename-search-mode","rename-replacement","rename-auto-fill","rename-add-selected","rename-results","rename-operations","rename-preview","rename-commit","create-tip-folders","rollback-last-edit","rename-preview-output","editing-status","photo-viewer","photo-viewer-close","photo-viewer-prev","photo-viewer-next","photo-viewer-zoom-out","photo-viewer-zoom-in","photo-viewer-reset","photo-viewer-zoom","photo-viewer-caption","photo-viewer-stage","photo-viewer-image"];
 const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
 const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, nasDatasetId: "", folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], photoObserver: null, metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null, tipMatches: [], tipMatchIndex: 0, editingEnabled: false, renameRows: new Map(), renameOperations: new Map(), lastBackupId: "", viewerPhotos: [], viewerIndex: 0, viewerZoom: 1, viewerPan: { x: 0, y: 0 } };
 
@@ -22,9 +22,41 @@ function closeSettings() {
   ui["settings-drawer"].hidden = true;
   ui["settings-button"]?.focus();
 }
+function drawerWidthLimit(width) { return Math.max(288, Math.min(Math.floor(window.innerWidth * .92), Math.round(width))); }
+function setDrawerWidth(width, persist = false) {
+  if (!ui["settings-shell"]) return;
+  const value = drawerWidthLimit(width);
+  ui["settings-shell"].style.width = `${value}px`;
+  if (persist) localStorage.setItem("phylophoto-settings-width", String(value));
+}
+function restoreDrawerWidth() {
+  const value = Number(localStorage.getItem("phylophoto-settings-width"));
+  if (Number.isFinite(value) && value > 0) setDrawerWidth(value);
+}
+function startSettingsResize(event) {
+  event.preventDefault();
+  const handle = ui["settings-resizer"];
+  let stopped = false;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    handle.classList.remove("dragging"); document.body.classList.remove("dragging");
+    handle.removeEventListener("pointermove", move);
+    if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+    setDrawerWidth(ui["settings-shell"].getBoundingClientRect().width, true);
+  };
+  const move = moveEvent => setDrawerWidth(window.innerWidth - moveEvent.clientX);
+  handle.setPointerCapture(event.pointerId);
+  handle.classList.add("dragging"); document.body.classList.add("dragging");
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", stop, { once:true });
+  handle.addEventListener("pointercancel", stop, { once:true });
+  handle.addEventListener("lostpointercapture", stop, { once:true });
+}
 ui["settings-button"]?.addEventListener("click", openSettings);
 ui["close-settings"]?.addEventListener("click", closeSettings);
 ui["drawer-backdrop"]?.addEventListener("click", closeSettings);
+ui["settings-resizer"]?.addEventListener("pointerdown", startSettingsResize);
 function applyLanguage(language = ui["language-select"].value) {
   const selected = translations[language] ? language : "en";
   ui["language-select"].value = selected; document.documentElement.lang = selected === "zh-Hant" ? "zh-Hant" : "en";
@@ -38,15 +70,15 @@ function matchingOptions() {
 function verticalLayout() { return matchMedia("(max-width: 820px)").matches; }
 function panelPercent() { const box = ui.workspace.getBoundingClientRect(), panel = ui["tree-panel"].getBoundingClientRect(); const total = verticalLayout() ? box.height : box.width; const size = verticalLayout() ? panel.height : panel.width; return total ? size / total * 100 : 56; }
 function setPanelPercent(percent) {
-  if (verticalLayout()) ui.workspace.style.gridTemplateRows = `minmax(260px,${percent}fr) 10px minmax(260px,${100 - percent}fr)`;
-  else ui.workspace.style.gridTemplateColumns = `minmax(300px,${percent}fr) 10px minmax(300px,${100 - percent}fr)`;
+  if (verticalLayout()) ui.workspace.style.gridTemplateRows = `minmax(0,${percent}fr) 10px minmax(0,${100 - percent}fr)`;
+  else ui.workspace.style.gridTemplateColumns = `minmax(0,${percent}fr) 10px minmax(0,${100 - percent}fr)`;
   ui.splitter.setAttribute("aria-valuenow", Math.round(percent));
 }
 function saveUiPreferences() { localStorage.setItem("phylophoto-client-ui", JSON.stringify({ panel: panelPercent(), matching: matchingOptions(), lazyPhotoLoading: ui["lazy-photo-loading"].checked })); }
 function restoreUiPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem("phylophoto-client-ui") || "{}"), matching = saved.matching || {};
-    if (saved.panel >= 25 && saved.panel <= 75) setPanelPercent(saved.panel);
+    if (saved.panel >= 20 && saved.panel <= 80) setPanelPercent(saved.panel);
     if (["full","prefix","regex"].includes(matching.rule)) ui["match-rule"].value = matching.rule;
     if (typeof matching.delimiter === "string") ui.delimiter.value = matching.delimiter;
     if (Number(matching.fieldCount) >= 1) ui["prefix-count"].value = matching.fieldCount;
@@ -450,7 +482,19 @@ async function rollbackLastEdit() {
   try { const response = await fetch(`/api/admin/datasets/${encodeURIComponent(state.nasDatasetId)}/rollback`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({backupId:state.lastBackupId}) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || `Rollback failed (${response.status})`); setEditingStatus(`Rolled back backup ${payload.backupId}.`); await loadNasDataset(state.nasDatasetId); } catch (error) { setEditingStatus(error.message || String(error), true); }
 }
 async function initCapabilities() {
-  try { const payload = await fetchJson("/api/capabilities"); state.editingEnabled = Boolean(payload.editing); ui["editing-panel"].hidden = !state.editingEnabled; if (!state.editingEnabled) { ui["editing-disabled-note"].hidden = false; ui["editing-disabled-note"].textContent = "NAS editing is disabled. Set PHYLOPHOTO_ENABLE_EDITING=1 and restart the container to enable it."; } } catch { ui["editing-panel"].hidden = true; }
+  const controls = () => ui["editing-panel"].querySelectorAll("input, select, button");
+  try {
+    const payload = await fetchJson("/api/capabilities");
+    state.editingEnabled = Boolean(payload.editing);
+    controls().forEach(control => { control.disabled = !state.editingEnabled; });
+    ui["editing-disabled-note"].hidden = state.editingEnabled;
+    ui["editing-summary-meta"].textContent = state.editingEnabled ? "" : "Disabled";
+    if (!state.editingEnabled) ui["editing-disabled-note"].textContent = "NAS editing is disabled. Set PHYLOPHOTO_ENABLE_EDITING=1 and restart the container to enable it.";
+  } catch {
+    state.editingEnabled = false; controls().forEach(control => { control.disabled = true; });
+    ui["editing-disabled-note"].hidden = false; ui["editing-summary-meta"].textContent = "Unavailable";
+    ui["editing-disabled-note"].textContent = "NAS editing is unavailable from this server.";
+  }
 }
 function clearTree() {
   postViewer({ type:"phylophoto:clear" }); revokeImages(); Object.assign(state,{ loadId:0,loadedId:0,currentSettings:{},sourceTree:"",filename:"",parsedTree:null,tips:[],selectedTips:[],files:[],photoFolderHandle:null,nasDatasetId:"",folderIndex:new Map(),folderMatches:new Map(),metadata:null,metadataTipColumn:"",appliedRoot:null,pendingRootReport:null });
@@ -469,10 +513,24 @@ function updateRootingControls() {
   renderOutgroupPicker();
 }
 function startSplit(event) {
-  event.preventDefault(); ui.splitter.classList.add("dragging"); document.body.classList.add("dragging");
-  const move = moveEvent => { const rect = ui.workspace.getBoundingClientRect(); const value = verticalLayout() ? (moveEvent.clientY - rect.top) / rect.height * 100 : (moveEvent.clientX - rect.left) / rect.width * 100; setPanelPercent(Math.min(75,Math.max(25,value))); };
-  const stop = () => { ui.splitter.classList.remove("dragging"); document.body.classList.remove("dragging"); window.removeEventListener("pointermove",move); saveUiPreferences(); window.dispatchEvent(new Event("resize")); };
-  window.addEventListener("pointermove",move); window.addEventListener("pointerup",stop,{ once:true });
+  event.preventDefault();
+  const handle = ui.splitter;
+  let stopped = false;
+  const move = moveEvent => { const rect = ui.workspace.getBoundingClientRect(); const value = verticalLayout() ? (moveEvent.clientY - rect.top) / rect.height * 100 : (moveEvent.clientX - rect.left) / rect.width * 100; setPanelPercent(Math.min(80,Math.max(20,value))); };
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    handle.classList.remove("dragging"); document.body.classList.remove("dragging");
+    handle.removeEventListener("pointermove",move);
+    if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+    saveUiPreferences(); window.dispatchEvent(new Event("resize"));
+  };
+  handle.setPointerCapture(event.pointerId);
+  handle.classList.add("dragging"); document.body.classList.add("dragging");
+  handle.addEventListener("pointermove",move);
+  handle.addEventListener("pointerup",stop,{ once:true });
+  handle.addEventListener("pointercancel",stop,{ once:true });
+  handle.addEventListener("lostpointercapture",stop,{ once:true });
 }
 
 ui["tree-file"].addEventListener("change",event => loadTree(event.target.files[0]));
@@ -503,7 +561,8 @@ ui["apply-root"].addEventListener("click",() => applyRoot()); ui.splitter.addEve
 ui["upload-dataset"].addEventListener("click",uploadDataset);
 ui["upload-target"].addEventListener("change",updateUploadTarget);
 ui["lazy-photo-loading"].addEventListener("change",() => { saveUiPreferences(); renderPhotos(); });
-ui.splitter.addEventListener("keydown",event => { const vertical = verticalLayout(), allowed = vertical ? ["ArrowUp","ArrowDown"] : ["ArrowLeft","ArrowRight"]; if (!allowed.includes(event.key)) return; event.preventDefault(); const increase = vertical ? event.key === "ArrowDown" : event.key === "ArrowRight"; setPanelPercent(Math.min(75,Math.max(25,panelPercent() + (increase ? 2 : -2)))); saveUiPreferences(); });
+ui.splitter.addEventListener("keydown",event => { const vertical = verticalLayout(), allowed = vertical ? ["ArrowUp","ArrowDown"] : ["ArrowLeft","ArrowRight"]; if (!allowed.includes(event.key)) return; event.preventDefault(); const increase = vertical ? event.key === "ArrowDown" : event.key === "ArrowRight"; setPanelPercent(Math.min(80,Math.max(20,panelPercent() + (increase ? 2 : -2)))); saveUiPreferences(); });
+ui["settings-resizer"].addEventListener("keydown",event => { if (!["ArrowLeft","ArrowRight"].includes(event.key)) return; event.preventDefault(); const current = ui["settings-shell"].getBoundingClientRect().width; setDrawerWidth(current + (event.key === "ArrowLeft" ? 24 : -24), true); });
 ui["language-select"].addEventListener("change",event => applyLanguage(event.target.value));
 ui["rename-search"].addEventListener("input",renderRenameResults); ui["rename-search-mode"].addEventListener("change",renderRenameResults); ui["rename-replacement"].addEventListener("input",renderRenameResults);
 ui["rename-auto-fill"].addEventListener("click",renderRenameResults); ui["rename-add-selected"].addEventListener("click",addSelectedRenames); ui["rename-preview"].addEventListener("click",previewRenames); ui["rename-commit"].addEventListener("click",commitRenames); ui["create-tip-folders"].addEventListener("click",createTipFolders); ui["rollback-last-edit"].addEventListener("click",rollbackLastEdit);
@@ -539,4 +598,4 @@ window.addEventListener("message",event => {
   }
 });
 ui["tree-viewer"].addEventListener("load",() => postViewer({ type:"phylophoto:ping" }));
-window.addEventListener("beforeunload",revokeImages); applyLanguage(localStorage.getItem("phylophoto-language") || "en"); restoreUiPreferences(); updateRootingControls(); postViewer({ type:"phylophoto:ping" }); initCapabilities(); initNasDatasets();
+window.addEventListener("beforeunload",revokeImages); applyLanguage(localStorage.getItem("phylophoto-language") || "en"); restoreUiPreferences(); restoreDrawerWidth(); updateRootingControls(); postViewer({ type:"phylophoto:ping" }); initCapabilities(); initNasDatasets();

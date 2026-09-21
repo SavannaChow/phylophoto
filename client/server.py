@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve PhyloPhoto datasets and explicitly gated NAS editing operations."""
+"""Serve PhyloPhoto datasets and transactional NAS editing operations."""
 
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ DATA_ROOT = Path(os.environ.get("PHYLOPHOTO_DATA_ROOT", "/data")).resolve()
 DATASET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 TREE_EXTENSIONS = {".nwk", ".newick", ".tree", ".tre", ".nex", ".nexus"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".bmp", ".avif", ".heic", ".heif"}
-EDITING_ENABLED = os.environ.get("PHYLOPHOTO_ENABLE_EDITING", "0").lower() in {"1", "true", "yes", "on"}
 
 
 class DatasetError(ValueError):
@@ -312,11 +311,6 @@ def lexical_rename(source: str, operations: list[dict]) -> tuple[str, list[dict]
     return updated, changes
 
 
-def _editing_required() -> None:
-    if not EDITING_ENABLED:
-        raise DatasetError("NAS editing is disabled; set PHYLOPHOTO_ENABLE_EDITING=1 to enable it")
-
-
 def _validate_folder_name(name: str) -> str:
     value = str(name)
     if not value or value in {".", ".."} or Path(value).name != value or "\x00" in value or "/" in value or "\\" in value:
@@ -347,7 +341,6 @@ def _make_backup(config: dict, dataset_id: str, data_root: Path, folders: list[s
 
 
 def preview_rename(dataset_id: str, operations: list[dict], data_root: Path | None = None) -> dict:
-    _editing_required()
     config = get_dataset(dataset_id, data_root)
     root = next(path for path in dataset_roots(data_root) if inside(config["tree"], path))
     raw = config["tree"].read_text(encoding="utf-8")
@@ -397,7 +390,6 @@ def commit_rename(dataset_id: str, operations: list[dict], data_root: Path | Non
 
 
 def create_tip_folders(dataset_id: str, data_root: Path | None = None) -> dict:
-    _editing_required()
     config = get_dataset(dataset_id, data_root)
     raw = config["tree"].read_text(encoding="utf-8")
     _, _ = lexical_rename(raw, [])
@@ -425,7 +417,6 @@ def create_tip_folders(dataset_id: str, data_root: Path | None = None) -> dict:
 
 
 def rollback_dataset(dataset_id: str, backup_id: str, data_root: Path | None = None) -> dict:
-    _editing_required()
     if not re.fullmatch(r"[A-Za-z0-9T_-]+", backup_id):
         raise DatasetError("Invalid backup id")
     config = get_dataset(dataset_id, data_root)
@@ -574,7 +565,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(HTTPStatus.NO_CONTENT); self.end_headers()
     def api(self, path: str) -> bool:
         if path == "/api/capabilities":
-            self.send_json({"editing": EDITING_ENABLED, "language": ["en", "zh-Hant"]})
+            self.send_json({"editing": True, "language": ["en", "zh-Hant"]})
             return True
         if path == "/api/datasets":
             datasets, errors = discover_datasets()

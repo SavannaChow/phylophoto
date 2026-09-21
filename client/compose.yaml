@@ -8,6 +8,5 @@ services:
     environment:
       PHYLOPHOTO_DATA_ROOT: /data
       PHYLOPHOTO_UPLOAD_ROOT: /data
-      PHYLOPHOTO_ENABLE_EDITING: ${PHYLOPHOTO_ENABLE_EDITING:-0}
     volumes:
       - ${PHYLOPHOTO_DATA_PATH:-./data}:/data

@@ -69,12 +69,7 @@ class DatasetTests(unittest.TestCase):
 
     def test_lexical_rename_changes_only_leaf_labels(self):
         source = "#NEXUS\nBegin trees;\nTranslate 1 A, 2 B;\nTree t = [&R] (1:0.1,2:0.2)95:0.3;\nEnd;\n"
-        original_flag = server.EDITING_ENABLED
-        server.EDITING_ENABLED = True
-        try:
-            updated, changes = server.lexical_rename(source, [{"from": "A", "to": "A_new"}])
-        finally:
-            server.EDITING_ENABLED = original_flag
+        updated, changes = server.lexical_rename(source, [{"from": "A", "to": "A_new"}])
         self.assertEqual(len(changes), 1)
         self.assertIn("Translate 1 A_new, 2 B;", updated)
         self.assertIn("(1:0.1,2:0.2)95:0.3;", updated)
@@ -87,34 +82,26 @@ class DatasetTests(unittest.TestCase):
             (analysis / "A").mkdir(parents=True)
             (analysis / "A" / "one.jpg").write_bytes(b"photo")
             (analysis / "tree.nwk").write_text("(A:1,B:1)95:2;\n", encoding="utf-8")
-            original_flag = server.EDITING_ENABLED
-            server.EDITING_ENABLED = True
-            try:
-                preview = server.preview_rename("analysis", [{"from": "A", "to": "A-renamed"}], root)
-                result = server.commit_rename("analysis", [{"from": "A", "to": "A-renamed"}], root)
-                self.assertIn("A-renamed", preview["updated"])
-                self.assertTrue((analysis / "A-renamed" / "one.jpg").is_file())
-                self.assertFalse((analysis / "A").exists())
-                self.assertTrue((root / ".phylophoto-backups" / "analysis" / result["backupId"] / "folders" / "A" / "one.jpg").is_file())
-                server.rollback_dataset("analysis", result["backupId"], root)
-                self.assertTrue((analysis / "A" / "one.jpg").is_file())
-                self.assertFalse((analysis / "A-renamed").exists())
-            finally:
-                server.EDITING_ENABLED = original_flag
+            preview = server.preview_rename("analysis", [{"from": "A", "to": "A-renamed"}], root)
+            result = server.commit_rename("analysis", [{"from": "A", "to": "A-renamed"}], root)
+            self.assertIn("A-renamed", preview["updated"])
+            self.assertTrue((analysis / "A-renamed" / "one.jpg").is_file())
+            self.assertFalse((analysis / "A").exists())
+            self.assertTrue((root / ".phylophoto-backups" / "analysis" / result["backupId"] / "folders" / "A" / "one.jpg").is_file())
+            server.rollback_dataset("analysis", result["backupId"], root)
+            self.assertTrue((analysis / "A" / "one.jpg").is_file())
+            self.assertFalse((analysis / "A-renamed").exists())
 
-    def test_tip_folder_creation_is_feature_gated(self):
+    def test_tip_folder_creation_is_available(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             analysis = root / "analysis"
             analysis.mkdir()
             (analysis / "tree.nwk").write_text("(A:1,B:1);", encoding="utf-8")
-            original_flag = server.EDITING_ENABLED
-            server.EDITING_ENABLED = False
-            try:
-                with self.assertRaises(server.DatasetError):
-                    server.create_tip_folders("analysis", root)
-            finally:
-                server.EDITING_ENABLED = original_flag
+            result = server.create_tip_folders("analysis", root)
+            self.assertEqual(result["created"], ["A", "B"])
+            self.assertTrue((analysis / "A").is_dir())
+            self.assertTrue((analysis / "B").is_dir())
 
     def test_tip_folder_creation_uses_nexus_translate_labels(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -122,12 +109,7 @@ class DatasetTests(unittest.TestCase):
             analysis = root / "analysis"
             analysis.mkdir()
             (analysis / "tree.nex").write_text("#NEXUS\nBegin trees;\nTranslate 1 'A sample', 2 B;\nTree t = (1:1,2:1);\nEnd;", encoding="utf-8")
-            original_flag = server.EDITING_ENABLED
-            server.EDITING_ENABLED = True
-            try:
-                result = server.create_tip_folders("analysis", root)
-            finally:
-                server.EDITING_ENABLED = original_flag
+            result = server.create_tip_folders("analysis", root)
             self.assertEqual(result["created"], ["A sample", "B"])
             self.assertTrue((analysis / "A sample").is_dir())
 

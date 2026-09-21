@@ -77,8 +77,12 @@ th,td { padding: .35rem .45rem; border-bottom: 1px solid var(--line); text-align
 #settings-drawer[hidden] { display: none; }
 #drawer-backdrop { position: absolute; inset: 0; background: rgba(15,23,42,.32); opacity: 0; transition: opacity .18s ease; }
 #settings-drawer.open #drawer-backdrop { opacity: 1; }
-#settings-content { position: absolute; top: 0; right: 0; bottom: 0; width: min(38rem, 92vw); overflow-y: auto; padding: .8rem; background: var(--surface); box-shadow: -8px 0 24px rgba(15,23,42,.18); transform: translateX(100%); transition: transform .18s ease; }
-#settings-drawer.open #settings-content { transform: translateX(0); }
+#settings-shell { position: absolute; top: 0; right: 0; bottom: 0; width: min(38rem,92vw); min-width: 18rem; max-width: 92vw; transform: translateX(100%); transition: transform .18s ease; }
+#settings-drawer.open #settings-shell { transform: translateX(0); }
+#settings-content { width: 100%; height: 100%; overflow-y: auto; padding: .8rem; background: var(--surface); box-shadow: -8px 0 24px rgba(15,23,42,.18); }
+#settings-resizer { position: absolute; z-index: 2; top: 0; bottom: 0; left: -7px; width: 14px; cursor: col-resize; touch-action: none; }
+#settings-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 6px; width: 2px; background: transparent; transition: background .12s,width .12s; }
+#settings-resizer:hover::after,#settings-resizer.dragging::after { width: 4px; left: 5px; background: var(--accent); }
 .drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
 .drawer-heading h2 { margin: 0; font-size: 1.1rem; }
 .language-picker { display: flex; align-items: center; justify-content: space-between; gap: .7rem; margin: .5rem 0 .65rem; font-size: .86rem; }
