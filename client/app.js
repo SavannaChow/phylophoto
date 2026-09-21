@@ -8,6 +8,23 @@ const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
 const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, nasDatasetId: "", folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], photoObserver: null, metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null, tipMatches: [], tipMatchIndex: 0, editingEnabled: false, renameRows: new Map(), renameOperations: new Map(), lastBackupId: "", viewerPhotos: [], viewerIndex: 0, viewerZoom: 1, viewerPan: { x: 0, y: 0 } };
 
 const translations = { en: { openTree:"Open tree", settings:"Settings", language:"Language", editNas:"Edit NAS dataset" }, "zh-Hant": { openTree:"開啟 tree", settings:"設定", language:"語言", editNas:"編輯 NAS dataset" } };
+function openSettings() {
+  if (!ui["settings-drawer"] || !ui["close-settings"]) return;
+  ui["settings-drawer"].hidden = false;
+  ui["settings-drawer"].classList.add("open");
+  ui["settings-drawer"].setAttribute("aria-hidden", "false");
+  ui["close-settings"].focus();
+}
+function closeSettings() {
+  if (!ui["settings-drawer"]) return;
+  ui["settings-drawer"].classList.remove("open");
+  ui["settings-drawer"].setAttribute("aria-hidden", "true");
+  ui["settings-drawer"].hidden = true;
+  ui["settings-button"]?.focus();
+}
+ui["settings-button"]?.addEventListener("click", openSettings);
+ui["close-settings"]?.addEventListener("click", closeSettings);
+ui["drawer-backdrop"]?.addEventListener("click", closeSettings);
 function applyLanguage(language = ui["language-select"].value) {
   const selected = translations[language] ? language : "en";
   ui["language-select"].value = selected; document.documentElement.lang = selected === "zh-Hant" ? "zh-Hant" : "en";
@@ -487,9 +504,6 @@ ui["upload-dataset"].addEventListener("click",uploadDataset);
 ui["upload-target"].addEventListener("change",updateUploadTarget);
 ui["lazy-photo-loading"].addEventListener("change",() => { saveUiPreferences(); renderPhotos(); });
 ui.splitter.addEventListener("keydown",event => { const vertical = verticalLayout(), allowed = vertical ? ["ArrowUp","ArrowDown"] : ["ArrowLeft","ArrowRight"]; if (!allowed.includes(event.key)) return; event.preventDefault(); const increase = vertical ? event.key === "ArrowDown" : event.key === "ArrowRight"; setPanelPercent(Math.min(75,Math.max(25,panelPercent() + (increase ? 2 : -2)))); saveUiPreferences(); });
-ui["settings-button"].addEventListener("click",() => { ui["settings-drawer"].hidden = false; ui["settings-drawer"].classList.add("open"); ui["settings-drawer"].setAttribute("aria-hidden","false"); ui["close-settings"].focus(); });
-function closeSettings() { ui["settings-drawer"].classList.remove("open"); ui["settings-drawer"].setAttribute("aria-hidden","true"); ui["settings-drawer"].hidden = true; ui["settings-button"].focus(); }
-ui["close-settings"].addEventListener("click",closeSettings); ui["drawer-backdrop"].addEventListener("click",closeSettings);
 ui["language-select"].addEventListener("change",event => applyLanguage(event.target.value));
 ui["rename-search"].addEventListener("input",renderRenameResults); ui["rename-search-mode"].addEventListener("change",renderRenameResults); ui["rename-replacement"].addEventListener("input",renderRenameResults);
 ui["rename-auto-fill"].addEventListener("click",renderRenameResults); ui["rename-add-selected"].addEventListener("click",addSelectedRenames); ui["rename-preview"].addEventListener("click",previewRenames); ui["rename-commit"].addEventListener("click",commitRenames); ui["create-tip-folders"].addEventListener("click",createTipFolders); ui["rollback-last-edit"].addEventListener("click",rollbackLastEdit);
