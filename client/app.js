@@ -487,8 +487,8 @@ ui["upload-dataset"].addEventListener("click",uploadDataset);
 ui["upload-target"].addEventListener("change",updateUploadTarget);
 ui["lazy-photo-loading"].addEventListener("change",() => { saveUiPreferences(); renderPhotos(); });
 ui.splitter.addEventListener("keydown",event => { const vertical = verticalLayout(), allowed = vertical ? ["ArrowUp","ArrowDown"] : ["ArrowLeft","ArrowRight"]; if (!allowed.includes(event.key)) return; event.preventDefault(); const increase = vertical ? event.key === "ArrowDown" : event.key === "ArrowRight"; setPanelPercent(Math.min(75,Math.max(25,panelPercent() + (increase ? 2 : -2)))); saveUiPreferences(); });
-ui["settings-button"].addEventListener("click",() => { ui["settings-drawer"].classList.add("open"); ui["settings-drawer"].setAttribute("aria-hidden","false"); });
-function closeSettings() { ui["settings-drawer"].classList.remove("open"); ui["settings-drawer"].setAttribute("aria-hidden","true"); }
+ui["settings-button"].addEventListener("click",() => { ui["settings-drawer"].hidden = false; ui["settings-drawer"].classList.add("open"); ui["settings-drawer"].setAttribute("aria-hidden","false"); ui["close-settings"].focus(); });
+function closeSettings() { ui["settings-drawer"].classList.remove("open"); ui["settings-drawer"].setAttribute("aria-hidden","true"); ui["settings-drawer"].hidden = true; ui["settings-button"].focus(); }
 ui["close-settings"].addEventListener("click",closeSettings); ui["drawer-backdrop"].addEventListener("click",closeSettings);
 ui["language-select"].addEventListener("change",event => applyLanguage(event.target.value));
 ui["rename-search"].addEventListener("input",renderRenameResults); ui["rename-search-mode"].addEventListener("change",renderRenameResults); ui["rename-replacement"].addEventListener("input",renderRenameResults);

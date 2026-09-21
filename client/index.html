@@ -19,7 +19,7 @@
       <button id="share-dataset" class="icon-button" type="button" aria-label="Copy dataset share link" title="Copy dataset share link" hidden disabled>🔗</button>
       <label class="button" for="metadata-file">Metadata CSV</label><input id="metadata-file" type="file" accept=".csv,text/csv" hidden>
       <button id="clear-tree" type="button" disabled>Clear</button>
-      <button id="settings-button" class="icon-button" type="button" aria-label="Settings" title="Settings">⚙</button>
+      <button id="settings-button" class="icon-button" type="button" aria-label="Settings" aria-controls="settings-drawer" title="Settings">⚙</button>
     </nav>
   </header>
   <main id="workspace">
@@ -27,7 +27,7 @@
     <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize tree and photo panels" aria-valuemin="25" aria-valuemax="75" tabindex="0"></div>
     <section id="photo-panel" class="panel" aria-label="Sample photos"><div id="selection-summary"></div><section id="metadata-results" hidden></section><div id="photo-results"></div></section>
   </main>
-  <aside id="settings-drawer" aria-label="Settings" aria-hidden="true">
+  <aside id="settings-drawer" hidden aria-label="Settings" aria-hidden="true">
     <div id="drawer-backdrop"></div><section id="settings-content"><div class="drawer-heading"><h2 data-i18n="settings">Settings</h2><button id="close-settings" class="icon-button" type="button" aria-label="Close settings">×</button></div>
     <label class="language-picker"><span data-i18n="language">Language</span><select id="language-select"><option value="en">English</option><option value="zh-Hant">繁體中文</option></select></label>
   <section id="bottom-controls">
