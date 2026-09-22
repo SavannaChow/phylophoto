@@ -1,0 +1,36 @@
+[2026-09-10 11:15:50] [from Darwin SavannaMacBookPro-10.local]  4882  cd /Users/savannachow/Github/UCE-photo
+[2026-09-10 11:16:20] [from Darwin SavannaMacBookPro-10.local]  4883  git remote add origin https://github.com/SavannaChow/phylophoto.git
+[2026-09-10 11:16:29] [from Darwin SavannaMacBookPro-10.local]  4884  git push -u origin peartree
+[2026-09-10 11:48:08] [from Darwin SavannaMacBookPro-10.local]  4886  cd /Users/savannachow/Github/phylophoto
+git push origin peartree
+[2026-09-10 12:15:50] [from Darwin SavannaMacBookPro-10.local]  4890  cd /Users/savannachow/Github/phylophoto
+git status
+git push -u origin codex/client-side-browser
+[2026-09-10 13:35:36] [from Darwin SavannaMacBookPro-10.local]  4893  cd /Users/savannachow/Github/phylophoto
+git push origin codex/client-side-browser
+[2026-09-10 14:26:05] [from Darwin SavannaMacBookPro-10.local]  4894  cd /Users/savannachow/Github/phylophoto
+git push -u origin codex/client-4e34ce9
+[2026-09-10 14:49:41] [from Darwin SavannaMacBookPro-10.local]  4895  cd /Users/savannachow/Github/phylophoto
+git push
+[2026-09-10 15:20:24] [from Darwin SavannaMacBookPro-10.local]  4895  cd /Users/savannachow/Github/phylophoto
+git push
+[2026-09-10 15:45:24] [from Darwin SavannaMacBookPro-10.local]  4895  cd /Users/savannachow/Github/phylophoto
+git push
+[2026-09-11 10:45:56] [from Darwin SavannaMacBookPro-10.local]  4895  cd /Users/savannachow/Github/phylophoto
+git push
+[2026-09-11 10:45:56] [from Darwin SavannaMacBookPro-10.local]  4895  cd /Users/savannachow/Github/phylophoto
+git push
+[2026-09-16 22:13:17] [from Darwin SavannaMacBookPro-10.local]  4898  cd /Users/savannachow/Github/phylophoto
+git push -u origin codex/nas-sharing-v1 --tags
+[2026-09-16 22:43:40] [from Darwin SavannaMacBookPro-10.local]  4900  cd /Users/savannachow/Github/phylophoto
+git push origin codex/nas-sharing-v1 --tags
+[2026-09-16 23:26:14] [from Darwin SavannaMacBookPro-10.local]  4900  cd /Users/savannachow/Github/phylophoto
+git push origin codex/nas-sharing-v1 --tags
+[2026-09-16 23:30:15] [from Darwin SavannaMacBookPro-10.local]  4900  cd /Users/savannachow/Github/phylophoto
+git push origin codex/nas-sharing-v1 --tags
+[2026-09-17 10:08:33] [from Darwin SavannaMacBookPro-10.local]  4899  ssh wenhua@140.109.28.154
+[2026-09-17 20:25:37] [from Darwin SavannaMacBookPro-10.local]  4900  cd /Users/savannachow/Github/phylophoto
+git push origin codex/nas-sharing-v1 --tags
+[2026-09-17 20:25:37] [from Darwin SavannaMacBookPro-10.local]  4900  cd /Users/savannachow/Github/phylophoto
+git push origin codex/nas-sharing-v1 --tags
+[2026-09-21 18:17:24] [from Darwin SavannaMacBookPro-10.local]  4904  ssh wenhua@140.109.28.154
