@@ -19,5 +19,6 @@ bundle_path="$app_path/Contents/Resources/PhyloPhotoStandalone_PhyloPhotoStandal
 cp -R "$project_dir/Sources/PhyloPhotoStandalone/Resources/Web/." "$bundle_path/"
 cp "$project_dir/icon/PhyloAtlas.icns" "$app_path/Contents/Resources/PhyloAtlas.icns"
 cp "$project_dir/icon/PhyloAtlas-64.png" "$bundle_path/app-icon.png"
+cp "$project_dir/THIRD-PARTY-NOTICES.md" "$app_path/Contents/Resources/THIRD-PARTY-NOTICES.md"
 
 echo "Built $app_path"

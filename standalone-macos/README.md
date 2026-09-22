@@ -13,3 +13,11 @@ open dist/PhyloPhoto.app
 ```
 
 The resulting app is at `standalone-macos/dist/PhyloPhoto.app`. It is unsigned for local development; distribution to other Macs needs Apple Developer signing and notarization.
+
+## Third-party software
+
+The standalone app embeds PearTree and its web dependencies. Their attribution
+and license information is included in
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) and is copied into the
+application bundle at `Contents/Resources/THIRD-PARTY-NOTICES.md` during the
+build.
