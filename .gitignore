@@ -11,3 +11,4 @@ sample_photos/
 client/.env
 client/data/
 client/uploads/
+@command_history.txt
