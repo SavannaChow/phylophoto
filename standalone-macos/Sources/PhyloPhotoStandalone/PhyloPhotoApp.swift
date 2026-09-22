@@ -199,6 +199,7 @@ struct PhyloPhotoWebView: NSViewRepresentable {
             case "openPhotoFolder": openPhotoFolder(body["folderName"] as? String)
             case "openPhoto": openPhoto(body["url"] as? String)
             case "showPhotoViewer": showPhotoViewer(urls: body["urls"] as? [String] ?? [], index: body["index"] as? Int ?? 0)
+            case "saveExportedTree": saveExportedTree(content: body["content"] as? String, filename: body["filename"] as? String, language: body["language"] as? String)
             case "saveRenamedTree":
                 let changes = (body["changes"] as? [[String: Any]] ?? []).compactMap { item -> (String, String)? in
                     guard let before = item["before"] as? String, let after = item["after"] as? String else { return nil }
@@ -303,6 +304,31 @@ struct PhyloPhotoWebView: NSViewRepresentable {
                 sendTree(treeURL)
             } catch {
                 send(["type": "error", "message": "Could not save renamed labels: \(error.localizedDescription)"])
+            }
+        }
+
+        private func saveExportedTree(content: String?, filename: String?, language: String?) {
+            guard let content, !content.isEmpty else {
+                send(["type": "error", "message": localized("PearTree did not produce an export file.", "PearTree 沒有產生可匯出的檔案。", language: language)])
+                return
+            }
+            let suggestedName = URL(fileURLWithPath: filename ?? "tree.nexus").lastPathComponent
+            let panel = NSSavePanel()
+            panel.title = localized("Export tree", "匯出 Tree", language: language)
+            panel.message = localized("Choose where to save the PearTree export.", "選擇要儲存 PearTree 匯出檔的位置。", language: language)
+            panel.prompt = localized("Export", "匯出", language: language)
+            panel.nameFieldStringValue = suggestedName.isEmpty ? "tree.nexus" : suggestedName
+            panel.canCreateDirectories = true
+            panel.isExtensionHidden = false
+            if let fileType = UTType(filenameExtension: URL(fileURLWithPath: panel.nameFieldStringValue).pathExtension) {
+                panel.allowedContentTypes = [fileType]
+            }
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            do {
+                try content.write(to: url, atomically: true, encoding: .utf8)
+                send(["type": "treeExported", "path": url.path])
+            } catch {
+                send(["type": "error", "message": localized("Could not save the exported tree: \(error.localizedDescription)", "無法儲存匯出的 Tree：\(error.localizedDescription)", language: language)])
             }
         }
 

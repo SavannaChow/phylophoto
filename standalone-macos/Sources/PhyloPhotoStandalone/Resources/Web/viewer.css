@@ -6,6 +6,46 @@ html, body, #peartree-viewer {
   overflow: hidden;
 }
 body { background: transparent; }
+
+/* PearTree's bundled Solarized theme gives this dialog a pale panel while
+   retaining its light foreground colour.  Keep this correction strictly
+   within Export Tree so the user's tree theme and other PearTree UI remain
+   untouched. */
+#export-tree-overlay {
+  --bs-body-color: #1d1d1f;
+  --bs-body-bg: #ffffff;
+  --bs-emphasis-color: #1d1d1f;
+  --bs-secondary-color: #6e6e73;
+  --bs-border-color: #d2d2d7;
+  --bs-modal-color: #1d1d1f;
+  --bs-modal-bg: #ffffff;
+  --pt-text: #1d1d1f;
+  --pt-text-muted: #6e6e73;
+  color: #1d1d1f;
+}
+#export-tree-overlay .pt-modal,
+#export-tree-overlay .pt-modal-header,
+#export-tree-overlay .pt-modal-body,
+#export-tree-overlay .pt-modal-footer {
+  color: #1d1d1f;
+  background: #ffffff;
+  border-color: #d2d2d7;
+}
+#export-tree-overlay label,
+#export-tree-overlay .form-label,
+#export-tree-overlay .form-check-label,
+#export-tree-overlay .form-text,
+#export-tree-overlay .text-secondary {
+  color: #3a3a3c !important;
+}
+#export-tree-overlay .form-select,
+#export-tree-overlay .form-control,
+#export-tree-overlay select,
+#export-tree-overlay input {
+  color: #1d1d1f !important;
+  background-color: #ffffff !important;
+  border-color: #c7c7cc;
+}
 #peartree-error {
   box-sizing: border-box;
   margin: 1rem;

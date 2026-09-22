@@ -73,7 +73,7 @@ async function mountTree(args) {
       statusBar: true,
       openTree: false,
       import: false,
-      export: false,
+      export: true,
       rtt: false,
       dataTable: false,
       help: false,
@@ -82,6 +82,21 @@ async function mountTree(args) {
       toolbarSections: "all",
     },
   });
+
+  // Use PearTree's own export dialog, but hand the final bytes to the native
+  // app so the user receives a macOS Save As panel rather than a web download.
+  window.peartree?.setExportSaveHandler?.(payload => {
+    if (typeof payload?.content !== "string") throw new Error("PearTree did not produce export text.");
+    send("phylophoto:export-tree", {
+      content: payload.content,
+      filename: typeof payload.filename === "string" ? payload.filename : "tree.nexus",
+      mimeType: typeof payload.mimeType === "string" ? payload.mimeType : "text/plain",
+    });
+  });
+  // The app-bar button is the single entry point; keep the embedded toolbar
+  // compact while leaving PearTree's command and native dialog available.
+  const embeddedExportButton = viewer.querySelector("#btn-export-tree");
+  if (embeddedExportButton) embeddedExportButton.style.display = "none";
 
   unsubscribeSelection = controller.onSelectionChanged(tips => {
     send("phylophoto:selection", { tips: normaliseTips(tips) });
@@ -133,6 +148,11 @@ window.addEventListener("message", async event => {
     else if (message.type === "phylophoto:load-tree") await mountTree(message);
     else if (message.type === "phylophoto:select") applySelection(message.tips);
     else if (message.type === "phylophoto:root") applyRoot(message.request);
+    else if (message.type === "phylophoto:open-export") {
+      const command = window.peartree?.commands?.get?.("export-tree");
+      if (!command?.enabled) throw new Error("PearTree export is not ready yet.");
+      window.peartree.commands.execute("export-tree");
+    }
     else if (message.type === "phylophoto:get-settings") {
       send("phylophoto:settings", { requestId: message.requestId, settings: controller?.getSettings?.() || {} });
     } else if (message.type === "phylophoto:clear") {
