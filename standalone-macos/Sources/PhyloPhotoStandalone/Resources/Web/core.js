@@ -175,8 +175,10 @@ export function matchFolders(tips, folderIndex, options) {
   const normalise = value => options.caseSensitive ? value : value.toLocaleLowerCase();
   return tips.map(tip => {
     const key = deriveKey(tip, options), comparison = normalise(key);
-    const candidates = key ? [...folderIndex.keys()].filter(folder => options.comparison === "starts" ? normalise(folder).startsWith(comparison) : normalise(folder) === comparison) : [];
-    return { tip, key, candidates, folder: candidates.length === 1 ? candidates[0] : null, status: candidates.length === 1 ? "matched" : candidates.length ? "ambiguous" : "missing" };
+    const candidates = key ? [...folderIndex.keys()].filter(folder => normalise(deriveKey(folder, options)) === comparison) : [];
+    const populated = candidates.filter(folder => (folderIndex.get(folder) || []).length > 0);
+    const folder = candidates.length === 1 ? candidates[0] : populated.length === 1 ? populated[0] : null;
+    return { tip, key, candidates, folder, status: folder ? "matched" : candidates.length ? "ambiguous" : "missing" };
   });
 }
 

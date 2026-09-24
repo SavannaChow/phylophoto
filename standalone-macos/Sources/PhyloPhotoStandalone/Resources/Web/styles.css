@@ -137,6 +137,7 @@ details { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; bac
 summary { padding: .78rem .9rem; font-size: .9rem; font-weight: 600; }
 .control-grid { gap: .6rem; padding: .1rem .9rem .85rem; }
 .setting-hint { flex-basis: 100%; color: var(--muted); font-size: .8rem; line-height: 1.35; }
+#delimiter-wrap[hidden],#prefix-count-wrap[hidden],#regex-wrap[hidden] { display: none !important; }
 .rename-batch { flex-basis: 100%; }
 .rename-workflow { align-items: stretch; gap: 0; padding: 0; }
 .rename-section { flex-basis: 100%; display: grid; gap: .65rem; padding: .9rem; border-bottom: 1px solid var(--line); }

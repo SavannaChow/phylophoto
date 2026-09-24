@@ -1,10 +1,10 @@
 "use strict";
 
-import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseNewick, transformBranchLengths } from "./core.js";
+import { buildFolderIndex, collectTips, deriveKey, extractNewick, matchFolders, mrcaDescendants, parseNewick, transformBranchLengths } from "./core.js";
 import { listTreeLabels, parseRenameRules, renameTreeLabels } from "./tree-text.js";
 
 const byId = id => document.getElementById(id);
-const ids = ["tree-file","open-tree-empty","open-tree-default","open-tree-text","open-tree-export","tree-tip-search","tree-tip-previous","tree-tip-next","tree-tip-match-status","photo-folder","open-photo-empty","recent-photo-folders","recent-photo-folder-list","refresh-photo-folder","open-rename","close-rename","cancel-rename","rename-drawer","rename-drawer-resizer","open-settings","close-settings","settings-drawer","settings-scrim","drawer-resizer","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","photo-empty","selection-summary","photo-results","splitter","tip-search","tip-matches","select-tip","rename-mode","rename-search","rename-suggestions","rename-replacement","rename-replacement-suggestions","rename-photo-folders","rename-batch","rename-batch-panel","rename-source","rename-source-label","rename-match-status","rename-matches","rename-match-rows","preview-rename","apply-rename","rename-status","rename-review","rename-actions","rename-preview","rename-preview-rows","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","comparison-mode","case-sensitive","lazy-photo-loading","create-tip-folders","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows","app-language"];
+const ids = ["tree-file","open-tree-empty","open-tree-default","open-tree-text","open-tree-export","tree-tip-search","tree-tip-previous","tree-tip-next","tree-tip-match-status","photo-folder","open-photo-empty","recent-photo-folders","recent-photo-folder-list","refresh-photo-folder","open-rename","close-rename","cancel-rename","rename-drawer","rename-drawer-resizer","open-settings","close-settings","settings-drawer","settings-scrim","drawer-resizer","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","photo-empty","selection-summary","photo-results","splitter","tip-search","tip-matches","select-tip","rename-mode","rename-search","rename-suggestions","rename-replacement","rename-replacement-suggestions","rename-photo-folders","rename-batch","rename-batch-panel","rename-source","rename-source-label","rename-match-status","rename-matches","rename-match-rows","preview-rename","apply-rename","rename-status","rename-review","rename-actions","rename-preview","rename-preview-rows","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","case-sensitive","lazy-photo-loading","create-tip-folders","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows","app-language"];
 const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
 const treeEmptyArtwork = byId("tree-empty-art");
 const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", rawTreeText: "", filename: "", treePath: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, photoFolderLoaded: false, folderIndex: new Map(), folderMatches: new Map(), recentPhotoFolders: [], imageUrls: [], photoObserver: null, appliedRoot: null, pendingRootReport: null, renameMatches: null, renameSelectedLabel: null, renamePreview: null, renameSaving: false, renameSuggestions: [], renameSuggestionIndex: -1, replacementSuggestions: [], replacementSuggestionIndex: -1, tipNavigationMatches: [], tipNavigationIndex: -1 };
@@ -14,8 +14,8 @@ const I18N = {
 };
 Object.assign(I18N.en, { rename:"Rename", renameNodes:"Rename tip labels", renameStepFind:"1. Select a node label", renameStepReplace:"2. Set the new label", renameStepReview:"3. Review changes", originalLabel:"Original label", renameMode:"Search mode", literal:"Literal text", search:"Search", replace:"Replace with", renamePhotoFolders:"Rename matching photo folders", batchRename:"Batch rename", batchRules:"Batch rules", batchHint:"One rule per line: search => replacement", matchingNodeLabels:"Matching node labels", matchingNodeCount:"distinct node label(s) found.", noMatchingNodes:"No node labels match this search.", selectNodeBeforePreview:"Select one node label from the search results before previewing changes.", searchBeforePreview:"Search node labels before previewing replacements.", preview:"Preview changes", applyRename:"Confirm rename", before:"Before", after:"After", cancel:"Cancel", noRenameChanges:"No node labels would change.", renamePreviewCount:"node label(s) will change. Review the table, then confirm to save.", searchTips:"Search tips", previousTip:"Previous matching tip", nextTip:"Next matching tip", noMatchingTips:"No matches", photoTipCount:"photo tip(s)", loadPhylogenyTree:"Load Phylogeny Tree", recentPhotoFolders:"Recent photo folders", more:"More…", less:"Show less", noRecentPhotoFolders:"No recent photo folders" });
 Object.assign(I18N.zh, { rename:"重新命名", renameNodes:"重新命名末端節點標籤", renameStepFind:"1. 選擇節點標籤", renameStepReplace:"2. 設定新名稱", renameStepReview:"3. 檢視更改", originalLabel:"原名稱", renameMode:"搜尋方式", literal:"一般文字", search:"搜尋", replace:"取代為", renamePhotoFolders:"同步更改對應照片資料夾", batchRename:"批次更名", batchRules:"批次規則", batchHint:"每行一條規則：搜尋 => 取代為", matchingNodeLabels:"搜尋到的節點標籤", matchingNodeCount:"個不同節點標籤符合搜尋。", noMatchingNodes:"沒有節點標籤符合此搜尋。", selectNodeBeforePreview:"請先從搜尋結果選擇一個節點標籤，再預覽更改。", searchBeforePreview:"請先搜尋節點標籤，再預覽取代結果。", preview:"預覽更改", applyRename:"確認更名", before:"更改前", after:"更改後", cancel:"取消", noRenameChanges:"沒有節點標籤需要更改。", renamePreviewCount:"個節點標籤將被更改。請檢視列表後確認儲存。", searchTips:"搜尋末端節點", previousTip:"上一個符合的末端節點", nextTip:"下一個符合的末端節點", noMatchingTips:"沒有符合項目", photoTipCount:"個有照片的末端節點", loadPhylogenyTree:"載入 Phylogeny Tree", recentPhotoFolders:"最近使用的照片資料夾", more:"更多…", less:"顯示較少", noRecentPhotoFolders:"尚無最近使用的照片資料夾" });
-I18N.en.destinationHint = "Choose a destination in Finder. Only missing tip folders are created; existing and older sample folders are left unchanged.";
-I18N.zh.destinationHint = "先在 Finder 選擇位置；只補建缺少的末端節點資料夾，既有及舊樣本資料夾都保持不變。";
+I18N.en.destinationHint = "Applies the same key rule to tree tips and folder names. Only missing keys are created; existing and older sample folders are left unchanged.";
+I18N.zh.destinationHint = "末端節點與資料夾名稱會套用相同的鍵值規則；只補建缺少的鍵值，既有及舊樣本資料夾都保持不變。";
 function languagePreference() { return localStorage.getItem("phylophoto-language") || "system"; }
 function languageCode() { const pref = languagePreference(); return pref === "system" ? (navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en") : pref; }
 function t(key) { return I18N[languageCode()][key] || I18N.en[key] || key; }
@@ -49,7 +49,7 @@ function scheduleWindowDragRegionUpdate() {
 }
 
 function matchingOptions() {
-  return { rule: ui["match-rule"].value, delimiter: ui.delimiter.value, fieldCount: Number(ui["prefix-count"].value), pattern: ui["match-regex"].value, comparison: ui["comparison-mode"].value, caseSensitive: ui["case-sensitive"].checked };
+  return { rule: ui["match-rule"].value, delimiter: ui.delimiter.value, fieldCount: Number(ui["prefix-count"].value), pattern: ui["match-regex"].value, caseSensitive: ui["case-sensitive"].checked };
 }
 function panelPercent() { const width = ui.workspace.getBoundingClientRect().width; return width ? ui["tree-panel"].getBoundingClientRect().width / width * 100 : 56; }
 function panelPercentLimits() { const width = ui.workspace.getBoundingClientRect().width, divider = ui.splitter.getBoundingClientRect().width || 1, usable = Math.max(1,width - divider); return { min:160 / usable * 100, max:100 - 220 / usable * 100 }; }
@@ -64,12 +64,11 @@ function restoreUiPreferences() {
     if (saved.panel > 0 && saved.panel < 100) setPanelPercent(saved.panel);
     if (Number(saved.drawerWidth) > 0) setDrawerWidth(saved.drawerWidth);
     const migrateLegacyDefault = saved.matchingDefaultsVersion !== 2 && matching.rule === "full" && matching.comparison === "equals";
-    if (migrateLegacyDefault) { ui["match-rule"].value = "prefix"; ui["comparison-mode"].value = "starts"; }
+    if (migrateLegacyDefault) ui["match-rule"].value = "prefix";
     else if (["full","prefix","regex"].includes(matching.rule)) ui["match-rule"].value = matching.rule;
     if (typeof matching.delimiter === "string") ui.delimiter.value = matching.delimiter;
     if (Number(matching.fieldCount) >= 1) ui["prefix-count"].value = matching.fieldCount;
     if (typeof matching.pattern === "string") ui["match-regex"].value = matching.pattern;
-    if (!migrateLegacyDefault && ["equals","starts"].includes(matching.comparison)) ui["comparison-mode"].value = matching.comparison;
     ui["case-sensitive"].checked = Boolean(matching.caseSensitive); ui["lazy-photo-loading"].checked = Boolean(saved.lazyPhotoLoading);
   } catch { localStorage.removeItem("phylophoto-client-ui"); }
   updateMatchingControls();
@@ -552,13 +551,19 @@ ui["reset-tree-view"].addEventListener("click",() => {
   state.currentSettings = {};
   if (state.sourceTree) mountTree();
 });
-for (const id of ["match-rule","delimiter","prefix-count","match-regex","comparison-mode","case-sensitive"]) ui[id].addEventListener("change",() => { updateMatchingControls(); updateFolderMatches(); });
+for (const id of ["match-rule","delimiter","prefix-count","match-regex","case-sensitive"]) ui[id].addEventListener("change",() => { updateMatchingControls(); updateFolderMatches(); });
 ui["rooting-mode"].addEventListener("change",updateRootingControls);
 ui["outgroup-search"].addEventListener("input", renderOutgroupPicker);
 ui["apply-root"].addEventListener("click",() => applyRoot()); ui.splitter.addEventListener("pointerdown",startSplit);
 ui["create-tip-folders"].addEventListener("click",() => {
   if (!state.tips.length) return;
-  nativePost("chooseTipFolderDestination", { tips: state.tips });
+  try {
+    const options = matchingOptions();
+    const folderKeys = [...new Set(state.tips.map(tip => deriveKey(tip, options)).filter(Boolean))];
+    nativePost("chooseTipFolderDestination", { folderKeys, rule:options.rule, delimiter:options.delimiter, fieldCount:options.fieldCount, pattern:options.pattern, caseSensitive:options.caseSensitive });
+  } catch (error) {
+    showStatus(`Could not derive photo folder names: ${error.message || error}`, true);
+  }
 });
 ui["lazy-photo-loading"].addEventListener("change",() => { saveUiPreferences(); renderPhotos(); });
 ui.splitter.addEventListener("keydown",event => { if (!["ArrowLeft","ArrowRight"].includes(event.key)) return; event.preventDefault(); setPanelPercent(panelPercent() + (event.key === "ArrowRight" ? 2 : -2)); saveUiPreferences(); });

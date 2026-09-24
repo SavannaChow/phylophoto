@@ -233,7 +233,15 @@ struct PhyloPhotoWebView: NSViewRepresentable {
                 }
                 saveRenamedTree(original: body["originalText"] as? String, updated: body["updatedText"] as? String, renamePhotoFolders: body["renamePhotoFolders"] as? Bool ?? false, changes: changes)
             case "chooseTipFolderDestination":
-                chooseTipFolderDestination((body["tips"] as? [String]) ?? [], language: body["language"] as? String)
+                chooseTipFolderDestination(
+                    (body["folderKeys"] as? [String]) ?? [],
+                    rule: body["rule"] as? String,
+                    delimiter: body["delimiter"] as? String,
+                    fieldCount: body["fieldCount"] as? Int ?? Int(body["fieldCount"] as? Double ?? 1),
+                    pattern: body["pattern"] as? String,
+                    caseSensitive: body["caseSensitive"] as? Bool ?? false,
+                    language: body["language"] as? String
+                )
             default: break
             }
         }
@@ -525,9 +533,9 @@ struct PhyloPhotoWebView: NSViewRepresentable {
                 .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         }
 
-        private func chooseTipFolderDestination(_ tips: [String], language: String?) {
-            let invalid = tips.filter { $0.isEmpty || $0.contains("/") || $0.contains("\0") }
-            let valid = Array(Set(tips.filter { !invalid.contains($0) })).sorted()
+        private func chooseTipFolderDestination(_ folderKeys: [String], rule: String?, delimiter: String?, fieldCount: Int, pattern: String?, caseSensitive: Bool, language: String?) {
+            let invalid = folderKeys.filter { $0.isEmpty || $0.contains("/") || $0.contains("\0") }
+            let valid = Array(Set(folderKeys.filter { !invalid.contains($0) })).sorted()
             guard !valid.isEmpty else { send(["type": "foldersCreated", "count": 0, "skipped": invalid.count]); return }
             let panel = NSOpenPanel()
             panel.title = localized("Choose destination for tree tip folders", "選擇樹末端節點資料夾的位置", language: language)
@@ -538,7 +546,17 @@ struct PhyloPhotoWebView: NSViewRepresentable {
             panel.allowsMultipleSelection = false
             panel.directoryURL = photoRoot?.deletingLastPathComponent()
             guard panel.runModal() == .OK, let root = panel.url?.standardizedFileURL else { return }
-            let missing = valid.filter { !FileManager.default.fileExists(atPath: root.appendingPathComponent($0, isDirectory: true).path) }
+            let existingFolders = ((try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? [])
+                .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+                .map(\.lastPathComponent)
+            let normalized: (String) -> String = { caseSensitive ? $0 : $0.localizedLowercase }
+            let missing = valid.filter { key in
+                let normalizedKey = normalized(key)
+                return !existingFolders.contains { folder in
+                    guard let folderKey = deriveFolderKey(folder, rule: rule, delimiter: delimiter, fieldCount: fieldCount, pattern: pattern) else { return false }
+                    return normalized(folderKey) == normalizedKey
+                }
+            }
             let existingCount = valid.count - missing.count
             guard !missing.isEmpty else {
                 send(["type": "foldersCreated", "count": 0, "existing": existingCount, "skipped": invalid.count, "destination": root.path])
@@ -561,6 +579,23 @@ struct PhyloPhotoWebView: NSViewRepresentable {
             }
             send(["type": "foldersCreated", "count": created, "existing": existingCount, "skipped": invalid.count, "failed": failures, "destination": root.path])
             reloadPhotoFolderAfterCreatingTips(at: root)
+        }
+
+        private func deriveFolderKey(_ value: String, rule: String?, delimiter: String?, fieldCount: Int, pattern: String?) -> String? {
+            switch rule {
+            case "prefix":
+                guard let delimiter, !delimiter.isEmpty else { return nil }
+                return value.components(separatedBy: delimiter).prefix(max(1, fieldCount)).joined(separator: delimiter)
+            case "regex":
+                guard let pattern, let expression = try? NSRegularExpression(pattern: pattern) else { return nil }
+                let sourceRange = NSRange(value.startIndex..<value.endIndex, in: value)
+                guard let match = expression.firstMatch(in: value, range: sourceRange) else { return nil }
+                let resultRange = match.numberOfRanges > 1 && match.range(at: 1).location != NSNotFound ? match.range(at: 1) : match.range(at: 0)
+                guard let range = Range(resultRange, in: value) else { return nil }
+                return String(value[range])
+            default:
+                return value
+            }
         }
 
         private func reloadPhotoFolderAfterCreatingTips(at root: URL) {
