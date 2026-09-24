@@ -495,7 +495,8 @@ def set_default_tree(dataset_id: str, tree_id: str, data_root: Path | None = Non
             temporary.unlink()
     return {"dataset": dataset_id, "defaultTreeId": config["tree_id"]}
 
-    server_version = "PhyloPhoto/1.0"
+
+class Handler(SimpleHTTPRequestHandler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(CLIENT_ROOT), **kwargs)
