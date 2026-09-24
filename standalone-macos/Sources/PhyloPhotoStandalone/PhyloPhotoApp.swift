@@ -150,6 +150,24 @@ private final class NativePhotoCanvas: NSView {
     func reset() { scale = 1; offset = .zero; needsDisplay = true }
 }
 
+/// Receives mouse-downs only on the noninteractive parts of the web header.
+private final class WindowDragRegion: NSView {
+    var controlRects: [NSRect] = []
+
+    override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let localPoint = convert(point, from: superview)
+        guard bounds.contains(localPoint), !controlRects.contains(where: { $0.contains(localPoint) }) else { return nil }
+        return self
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.perform(NSSelectorFromString("performWindowDragWithEvent:"), with: event)
+    }
+}
+
 struct PhyloPhotoWebView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -161,6 +179,12 @@ struct PhyloPhotoWebView: NSViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         context.coordinator.webView = webView
+        // WKWebView uses top-left coordinates. The page reports header and
+        // control bounds so only empty header space can start a window drag.
+        let dragRegion = WindowDragRegion(frame: .zero)
+        dragRegion.autoresizingMask = [.width, .maxYMargin]
+        context.coordinator.dragRegion = dragRegion
+        webView.addSubview(dragRegion, positioned: .above, relativeTo: nil)
         DispatchQueue.main.async {
             guard let window = webView.window else { return }
             window.styleMask.insert(.fullSizeContentView)
@@ -176,6 +200,7 @@ struct PhyloPhotoWebView: NSViewRepresentable {
 
     final class Coordinator: NSObject, WKScriptMessageHandler, WKURLSchemeHandler {
         weak var webView: WKWebView?
+        fileprivate weak var dragRegion: WindowDragRegion?
         private let images = Set(["jpg", "jpeg", "png", "gif", "webp", "tif", "tiff", "bmp", "avif", "heic", "heif"])
         private let treeExtensions = Set(["newick", "nwk", "tree", "treefile", "tre", "nexus", "nex"])
         private var treeURL: URL?
@@ -190,6 +215,7 @@ struct PhyloPhotoWebView: NSViewRepresentable {
 
         private func handle(action: String, body: [String: Any]) {
             switch action {
+            case "updateDragRegion": updateDragRegion(body)
             case "chooseTree": chooseTree(language: body["language"] as? String)
             case "openTree": openTree(mode: body["mode"] as? String)
             case "choosePhotoFolder": choosePhotoFolder(language: body["language"] as? String, hasTree: body["hasTree"] as? Bool ?? false)
@@ -209,6 +235,19 @@ struct PhyloPhotoWebView: NSViewRepresentable {
             case "chooseTipFolderDestination":
                 chooseTipFolderDestination((body["tips"] as? [String]) ?? [], language: body["language"] as? String)
             default: break
+            }
+        }
+
+        private func updateDragRegion(_ body: [String: Any]) {
+            guard let webView, let dragRegion else { return }
+            let headerHeight = max(0, min(CGFloat(body["height"] as? Double ?? 0), webView.bounds.height))
+            dragRegion.frame = NSRect(x: 80, y: 0, width: max(0, webView.bounds.width - 80), height: headerHeight)
+            dragRegion.isHidden = !(body["enabled"] as? Bool ?? false)
+            dragRegion.controlRects = (body["controls"] as? [[String: Double]] ?? []).map { rect in
+                NSRect(x: CGFloat(rect["x"] ?? 0) - 80,
+                       y: CGFloat(rect["y"] ?? 0),
+                       width: CGFloat(rect["width"] ?? 0),
+                       height: CGFloat(rect["height"] ?? 0))
             }
         }
 
@@ -488,18 +527,24 @@ struct PhyloPhotoWebView: NSViewRepresentable {
 
         private func chooseTipFolderDestination(_ tips: [String], language: String?) {
             let invalid = tips.filter { $0.isEmpty || $0.contains("/") || $0.contains("\0") }
-            let valid = tips.filter { !invalid.contains($0) }
+            let valid = Array(Set(tips.filter { !invalid.contains($0) })).sorted()
             guard !valid.isEmpty else { send(["type": "foldersCreated", "count": 0, "skipped": invalid.count]); return }
             let panel = NSOpenPanel()
             panel.title = localized("Choose destination for tree tip folders", "選擇樹末端節點資料夾的位置", language: language)
-            panel.message = localized("Choose the parent folder in which to create folders for the tree tips.", "選擇要建立各樹末端節點資料夾的上層資料夾。", language: language)
+            panel.message = localized("Choose the parent folder. Only missing tip folders will be created; other folders will not change.", "選擇上層資料夾。只補建缺少的末端節點資料夾；其他資料夾不會變動。", language: language)
             panel.prompt = localized("Choose destination", "選擇位置", language: language)
             panel.canChooseFiles = false
             panel.canChooseDirectories = true
             panel.allowsMultipleSelection = false
+            panel.directoryURL = photoRoot?.deletingLastPathComponent()
             guard panel.runModal() == .OK, let root = panel.url?.standardizedFileURL else { return }
             let missing = valid.filter { !FileManager.default.fileExists(atPath: root.appendingPathComponent($0, isDirectory: true).path) }
-            guard !missing.isEmpty else { send(["type": "foldersCreated", "count": 0, "skipped": invalid.count, "destination": root.path]); return }
+            let existingCount = valid.count - missing.count
+            guard !missing.isEmpty else {
+                send(["type": "foldersCreated", "count": 0, "existing": existingCount, "skipped": invalid.count, "destination": root.path])
+                reloadPhotoFolderAfterCreatingTips(at: root)
+                return
+            }
             let alert = NSAlert()
             alert.messageText = language == "zh" ? "建立 \(missing.count) 個尚未存在的末端節點資料夾？" : "Create \(missing.count) missing tip folder(s)?"
             alert.informativeText = language == "zh" ? "資料夾將建立在「\(root.lastPathComponent)」中；既有資料夾不會變動。" : "Folders will be created inside \(root.lastPathComponent). Existing folders are left unchanged."
@@ -514,7 +559,16 @@ struct PhyloPhotoWebView: NSViewRepresentable {
                     created += 1
                 } catch { failures.append(tip) }
             }
-            send(["type": "foldersCreated", "count": created, "skipped": invalid.count, "failed": failures, "destination": root.path])
+            send(["type": "foldersCreated", "count": created, "existing": existingCount, "skipped": invalid.count, "failed": failures, "destination": root.path])
+            reloadPhotoFolderAfterCreatingTips(at: root)
+        }
+
+        private func reloadPhotoFolderAfterCreatingTips(at root: URL) {
+            if photoRoot == nil {
+                photoRoot = root
+                rememberPhotoFolder(root)
+            }
+            if root == photoRoot { sendPhotoFolder() }
         }
 
         private func fileURL(for url: URL) -> String {
