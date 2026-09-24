@@ -121,8 +121,10 @@ function setPhotoFiles(files, folderName = "") {
 function updateDefaultTreeButton() {
   const button = ui["set-default-tree"];
   if (!button) return;
+  const alreadyDefault = Boolean(state.nasDatasetId && state.nasTreeId && state.nasTreeId === state.nasDefaultTreeId);
   button.hidden = !state.nasDatasetId;
-  button.disabled = !state.nasDatasetId || !state.nasTreeId || state.nasTreeId === state.nasDefaultTreeId;
+  button.disabled = !state.nasDatasetId || !state.nasTreeId || alreadyDefault;
+  button.textContent = alreadyDefault ? "Current NAS tree is default" : "Set as default NAS tree";
 }
 
 function setDatasetQuery(datasetId = "", treeId = "") {
