@@ -3,7 +3,7 @@
 import { buildFolderIndex, collectTips, extractNewick, matchFolders, mrcaDescendants, parseCsv, parseNewick, transformBranchLengths } from "./core.js";
 
 const byId = id => document.getElementById(id);
-const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","nas-dataset","nas-tree","load-nas-dataset","share-dataset","nas-upload-panel","upload-target","upload-dataset-id","upload-tree-file","upload-photo-folder","upload-metadata-file","upload-dataset","upload-progress","upload-status","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","tip-prev","tip-next","tip-match-position","select-tip","save-visual-options","reset-tree-view","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","case-sensitive","lazy-photo-loading","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows","settings-button","settings-drawer","drawer-backdrop","settings-shell","settings-content","settings-resizer","close-settings","language-select","editing-panel","editing-summary-meta","editing-disabled-note","rename-search","rename-search-mode","rename-replacement","rename-auto-fill","rename-add-selected","rename-results","rename-operations","rename-preview","rename-commit","create-tip-folders","rollback-last-edit","rename-preview-output","editing-status","photo-viewer","photo-viewer-close","photo-viewer-prev","photo-viewer-next","photo-viewer-zoom-out","photo-viewer-zoom-in","photo-viewer-reset","photo-viewer-zoom","photo-viewer-caption","photo-viewer-stage","photo-viewer-image"];
+const ids = ["tree-file","photo-folder","choose-photo-folder","refresh-photo-folder","nas-dataset","nas-tree","load-nas-dataset","share-dataset","nas-upload-panel","upload-target","upload-dataset-id","upload-tree-file","upload-photo-folder","upload-metadata-file","upload-dataset","upload-progress","upload-status","metadata-file","clear-tree","workspace","tree-name","tree-viewer","tree-empty","tree-panel","photo-panel","selection-summary","metadata-results","photo-results","splitter","tip-search","tip-matches","tip-prev","tip-next","tip-match-position","select-tip","save-visual-options","reset-tree-view","set-default-tree","photo-folder-name","match-rule","delimiter-wrap","delimiter","prefix-count","prefix-count-wrap","regex-wrap","match-regex","case-sensitive","lazy-photo-loading","rooting-mode","outgroup-picker","outgroup-search","outgroup-matches","outgroup-selected","multiple-outgroups","apply-root","rooting-status","folder-warning-panel","folder-warning-summary","folder-warning-rows","settings-button","settings-drawer","drawer-backdrop","settings-shell","settings-content","settings-resizer","close-settings","language-select","editing-panel","editing-summary-meta","editing-disabled-note","rename-search","rename-search-mode","rename-replacement","rename-auto-fill","rename-add-selected","rename-results","rename-operations","rename-preview","rename-commit","create-tip-folders","rollback-last-edit","rename-preview-output","editing-status","photo-viewer","photo-viewer-close","photo-viewer-prev","photo-viewer-next","photo-viewer-zoom-out","photo-viewer-zoom-in","photo-viewer-reset","photo-viewer-zoom","photo-viewer-caption","photo-viewer-stage","photo-viewer-image"];
 const ui = Object.fromEntries(ids.map(id => [id, byId(id)]));
 const state = { viewerReady: false, loadId: 0, loadedId: 0, settingsRequest: 0, currentSettings: {}, sourceTree: "", filename: "", parsedTree: null, tips: [], selectedTips: [], files: [], photoFolderHandle: null, nasDatasetId: "", nasTreeId: "", nasDefaultTreeId: "", folderIndex: new Map(), folderMatches: new Map(), imageUrls: [], photoObserver: null, metadata: null, metadataTipColumn: "", appliedRoot: null, pendingRootReport: null, tipMatches: [], tipMatchIndex: 0, editingEnabled: false, renameRows: new Map(), renameOperations: new Map(), lastBackupId: "", viewerPhotos: [], viewerIndex: 0, viewerZoom: 1, viewerPan: { x: 0, y: 0 } };
 
@@ -118,6 +118,13 @@ function setPhotoFiles(files, folderName = "") {
   updateFolderMatches();
 }
 
+function updateDefaultTreeButton() {
+  const button = ui["set-default-tree"];
+  if (!button) return;
+  button.hidden = !state.nasDatasetId;
+  button.disabled = !state.nasDatasetId || !state.nasTreeId || state.nasTreeId === state.nasDefaultTreeId;
+}
+
 function setDatasetQuery(datasetId = "", treeId = "") {
   const url = new URL(window.location.href);
   if (datasetId) url.searchParams.set("dataset", datasetId);
@@ -129,7 +136,7 @@ function setDatasetQuery(datasetId = "", treeId = "") {
 
 function leaveNasDataset() {
   state.nasDatasetId = ""; state.nasTreeId = ""; state.nasDefaultTreeId = "";
-  ui["nas-tree"].hidden = true; ui["share-dataset"].disabled = true;
+  ui["nas-tree"].hidden = true; ui["share-dataset"].disabled = true; updateDefaultTreeButton();
   setDatasetQuery();
   updateEditingAvailability();
 }
@@ -377,10 +384,20 @@ async function loadNasDataset(datasetId, treeId = ui["nas-tree"].value) {
     ui["nas-tree"].replaceChildren(...(dataset.trees || []).map(tree => new Option(tree.filename, tree.id)));
     ui["nas-tree"].hidden = (dataset.trees || []).length < 2;
     if ((dataset.trees || []).length) ui["nas-tree"].value = dataset.tree.id;
-    ui["share-dataset"].disabled = false; setDatasetQuery(dataset.id, dataset.tree.id); updateEditingAvailability(); renderMetadata();
+    ui["share-dataset"].disabled = false; setDatasetQuery(dataset.id, dataset.tree.id); updateDefaultTreeButton(); updateEditingAvailability(); renderMetadata();
   } catch (error) {
-    state.nasDatasetId = ""; state.nasTreeId = ""; state.nasDefaultTreeId = ""; ui["share-dataset"].disabled = true; updateEditingAvailability(); ui["tree-empty"].hidden = false; ui["tree-empty"].textContent = `Could not load NAS dataset: ${error.message || error}`;
+    state.nasDatasetId = ""; state.nasTreeId = ""; state.nasDefaultTreeId = ""; ui["share-dataset"].disabled = true; updateDefaultTreeButton(); updateEditingAvailability(); ui["tree-empty"].hidden = false; ui["tree-empty"].textContent = `Could not load NAS dataset: ${error.message || error}`;
   } finally { ui["load-nas-dataset"].disabled = !ui["nas-dataset"].value; }
+}
+
+async function setDefaultNasTree() {
+  if (!state.nasDatasetId || !state.nasTreeId || state.nasTreeId === state.nasDefaultTreeId) return;
+  const response = await fetch(`/api/admin/datasets/${encodeURIComponent(state.nasDatasetId)}/default-tree`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ treeId: state.nasTreeId }) });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) return showStatus(payload.error || `Could not set default tree (${response.status})`, true);
+  state.nasDefaultTreeId = payload.defaultTreeId;
+  updateDefaultTreeButton(); updateEditingAvailability();
+  showStatus("Current NAS tree is now the default tree.");
 }
 
 async function copyDatasetLink() {
@@ -534,7 +551,7 @@ function clearTree() {
   ui["photo-results"].replaceChildren(); ui["metadata-results"].replaceChildren(); ui["selection-summary"].textContent = ""; ui["tree-name"].textContent = ""; ui["photo-folder-name"].textContent = ""; ui["folder-warning-panel"].hidden = true; showStatus("");
   for (const id of ["tree-file","photo-folder","metadata-file","tip-search","outgroup-search","multiple-outgroups"]) ui[id].value = "";
   ui["tip-matches"].replaceChildren(); renderOutgroupPicker();
-  ui["share-dataset"].disabled = true; setDatasetQuery();
+  ui["share-dataset"].disabled = true; updateDefaultTreeButton(); setDatasetQuery();
   updateEditingAvailability();
   for (const id of ["clear-tree","rooting-mode","apply-root","tip-search","tip-prev","tip-next","select-tip","refresh-photo-folder"]) ui[id].disabled = true;
 }
@@ -570,6 +587,7 @@ ui["tree-file"].addEventListener("change",event => loadTree(event.target.files[0
 ui["nas-dataset"].addEventListener("change", async () => { const datasetId = ui["nas-dataset"].value; ui["load-nas-dataset"].disabled = true; ui["nas-tree"].hidden = true; if (!datasetId) return; try { await refreshNasTreeOptions(datasetId); } catch (error) { showStatus(`Could not list NAS trees: ${error.message || error}`, true); } finally { ui["load-nas-dataset"].disabled = false; } });
 ui["load-nas-dataset"].addEventListener("click",() => loadNasDataset(ui["nas-dataset"].value, ui["nas-tree"].value));
 ui["share-dataset"].addEventListener("click",copyDatasetLink);
+ui["set-default-tree"].addEventListener("click",setDefaultNasTree);
 ui["choose-photo-folder"].addEventListener("click",choosePhotoFolder);
 ui["refresh-photo-folder"].addEventListener("click",refreshPhotoFolder);
 ui["photo-folder"].addEventListener("change",event => { leaveNasDataset(); state.photoFolderHandle = null; setPhotoFiles([...event.target.files], event.target.files[0]?.webkitRelativePath?.split("/")[0] || ""); });
@@ -631,4 +649,4 @@ window.addEventListener("message",event => {
   }
 });
 ui["tree-viewer"].addEventListener("load",() => postViewer({ type:"phylophoto:ping" }));
-window.addEventListener("beforeunload",revokeImages); applyLanguage(localStorage.getItem("phylophoto-language") || "en"); restoreUiPreferences(); restoreDrawerWidth(); updateRootingControls(); postViewer({ type:"phylophoto:ping" }); initCapabilities(); initNasDatasets();
+window.addEventListener("beforeunload",revokeImages); applyLanguage(localStorage.getItem("phylophoto-language") || "en"); restoreUiPreferences(); restoreDrawerWidth(); updateRootingControls(); updateDefaultTreeButton(); postViewer({ type:"phylophoto:ping" }); initCapabilities(); initNasDatasets();

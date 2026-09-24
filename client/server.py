@@ -121,7 +121,9 @@ def get_dataset(dataset_id: str, data_root: Path | None = None, tree_ref: str | 
         for candidate in (root / dataset_id, root / "datasets" / dataset_id):
             dataset_dir = candidate.resolve()
             if inside(dataset_dir, root) and dataset_dir.is_dir():
-                return read_manifest(dataset_dir, root, tree_ref)
+                config = read_manifest(dataset_dir, root, tree_ref)
+                config["dataset_dir"] = dataset_dir
+                return config
     raise DatasetError("Dataset not found")
 
 
@@ -472,7 +474,27 @@ def rollback_dataset(dataset_id: str, backup_id: str, data_root: Path | None = N
     return {"dataset": dataset_id, "backupId": backup_id, "restored": manifest.get("folders", [])}
 
 
-class Handler(SimpleHTTPRequestHandler):
+def set_default_tree(dataset_id: str, tree_id: str, data_root: Path | None = None) -> dict:
+    config = get_dataset(dataset_id, data_root, tree_id)
+    manifest_path = config["dataset_dir"] / "dataset.json"
+    manifest = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise DatasetError(f"Invalid dataset.json: {exc}") from exc
+        if not isinstance(manifest, dict):
+            raise DatasetError("dataset.json must contain an object")
+    manifest["tree"] = config["tree_id"]
+    temporary = manifest_path.with_name(f".{manifest_path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, manifest_path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return {"dataset": dataset_id, "defaultTreeId": config["tree_id"]}
+
     server_version = "PhyloPhoto/1.0"
 
     def __init__(self, *args, **kwargs):
@@ -641,6 +663,11 @@ class Handler(SimpleHTTPRequestHandler):
             match = re.fullmatch(r"/api/admin/datasets/([^/]+)/files/(tree|metadata|photos)/(.*)", path)
             if self.command == "PUT" and match:
                 self.upload_file(unquote(match.group(1)), match.group(2), match.group(3)); return
+            match = re.fullmatch(r"/api/admin/datasets/([^/]+)/default-tree", path)
+            if self.command == "POST" and match:
+                body = self.read_json_body()
+                self.send_json(set_default_tree(unquote(match.group(1)), str(body.get("treeId") or "")))
+                return
             match = re.fullmatch(r"/api/admin/datasets/([^/]+)/rename/(preview|commit)", path)
             if self.command == "POST" and match:
                 body = self.read_json_body()
