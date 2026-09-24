@@ -13,13 +13,13 @@ from datetime import datetime
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 CLIENT_ROOT = Path(__file__).resolve().parent
 UPLOAD_ROOT = Path(os.environ.get("PHYLOPHOTO_UPLOAD_ROOT", "/uploads")).resolve()
 DATA_ROOT = Path(os.environ.get("PHYLOPHOTO_DATA_ROOT", "/data")).resolve()
 DATASET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-TREE_EXTENSIONS = {".nwk", ".newick", ".tree", ".tre", ".nex", ".nexus"}
+TREE_EXTENSIONS = {".nwk", ".newick", ".tree", ".treefile", ".tre", ".nex", ".nexus"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".bmp", ".avif", ".heic", ".heif"}
 
 
@@ -42,7 +42,22 @@ def safe_path(base: Path, value: str, data_root: Path, kind: str) -> Path:
     return path
 
 
-def read_manifest(dataset_dir: Path, data_root: Path) -> dict:
+def tree_candidates(dataset_dir: Path, data_root: Path, manifest: dict) -> dict[str, Path]:
+    candidates = {path.relative_to(dataset_dir).as_posix(): path.resolve() for path in dataset_dir.iterdir() if path.is_file() and path.suffix.lower() in TREE_EXTENSIONS}
+    if manifest.get("tree"):
+        tree_path = safe_path(dataset_dir, str(manifest["tree"]), data_root, "Tree")
+        if tree_path.suffix.lower() not in TREE_EXTENSIONS:
+            raise DatasetError("Configured tree file has an unsupported extension")
+        candidates[tree_path.relative_to(dataset_dir).as_posix()] = tree_path
+    if not candidates:
+        raise DatasetError("Add a tree file to the analysis folder")
+    for tree_id, tree_path in candidates.items():
+        if not inside(tree_path, data_root) or not tree_path.is_file():
+            raise DatasetError(f"Tree file not found: {tree_id}")
+    return dict(sorted(candidates.items()))
+
+
+def read_manifest(dataset_dir: Path, data_root: Path, tree_ref: str | None = None) -> dict:
     manifest_path = dataset_dir / "dataset.json"
     if manifest_path.is_file():
         try:
@@ -51,25 +66,22 @@ def read_manifest(dataset_dir: Path, data_root: Path) -> dict:
             raise DatasetError(f"Invalid dataset.json: {exc}") from exc
     else:
         manifest = {}
-    if manifest.get("tree"):
-        tree_path = safe_path(dataset_dir, str(manifest["tree"]), data_root, "Tree")
-    else:
-        candidates = sorted(path for path in dataset_dir.iterdir() if path.is_file() and path.suffix.lower() in TREE_EXTENSIONS)
-        if len(candidates) != 1:
-            raise DatasetError("Specify 'tree' in dataset.json or keep exactly one tree file in the dataset folder")
-        tree_path = candidates[0].resolve()
-    if not inside(tree_path, data_root):
-        raise DatasetError("Tree path leaves the configured data root")
+    trees = tree_candidates(dataset_dir, data_root, manifest)
+    default_tree_id = str(manifest.get("tree") or next(iter(trees))).replace("\\", "/")
+    if default_tree_id not in trees:
+        raise DatasetError("Configured tree file is not available")
+    selected_tree_id = str(tree_ref or default_tree_id).replace("\\", "/")
+    if selected_tree_id not in trees:
+        raise DatasetError("Selected tree is not available in this analysis folder")
+    tree_path = trees[selected_tree_id]
     photos_path = safe_path(dataset_dir, str(manifest.get("photos", ".")), data_root, "Photos")
     metadata_value = manifest.get("metadata")
     metadata_path = safe_path(dataset_dir, str(metadata_value), data_root, "Metadata") if metadata_value else None
-    if not tree_path.is_file():
-        raise DatasetError(f"Tree file not found: {tree_path.name}")
     if not photos_path.is_dir():
         raise DatasetError(f"Photo folder not found: {photos_path.name}")
     if metadata_path and not metadata_path.is_file():
         raise DatasetError(f"Metadata file not found: {metadata_path.name}")
-    return {"title": str(manifest.get("title") or dataset_dir.name), "tree": tree_path, "photos": photos_path, "metadata": metadata_path}
+    return {"title": str(manifest.get("title") or dataset_dir.name), "tree": tree_path, "tree_id": selected_tree_id, "default_tree_id": default_tree_id, "trees": trees, "photos": photos_path, "metadata": metadata_path}
 
 
 def dataset_roots(data_root: Path | None = None) -> list[Path]:
@@ -96,25 +108,25 @@ def discover_datasets(data_root: Path | None = None) -> tuple[list[dict], dict[s
             seen.add(dataset_dir.name)
             try:
                 config = read_manifest(dataset_dir, root)
-                datasets.append({"id": dataset_dir.name, "title": config["title"], "treeFile": config["tree"].name})
+                datasets.append({"id": dataset_dir.name, "title": config["title"], "treeFile": config["tree"].name, "treeCount": len(config["trees"])})
             except (DatasetError, OSError) as exc:
                 errors[dataset_dir.name] = str(exc)
     return datasets, errors
 
 
-def get_dataset(dataset_id: str, data_root: Path | None = None) -> dict:
+def get_dataset(dataset_id: str, data_root: Path | None = None, tree_ref: str | None = None) -> dict:
     if not DATASET_ID.fullmatch(dataset_id):
         raise DatasetError("Invalid dataset id")
     for root in dataset_roots(data_root):
         for candidate in (root / dataset_id, root / "datasets" / dataset_id):
             dataset_dir = candidate.resolve()
             if inside(dataset_dir, root) and dataset_dir.is_dir():
-                return read_manifest(dataset_dir, root)
+                return read_manifest(dataset_dir, root, tree_ref)
     raise DatasetError("Dataset not found")
 
 
-def dataset_payload(dataset_id: str, data_root: Path | None = None) -> dict:
-    config = get_dataset(dataset_id, data_root)
+def dataset_payload(dataset_id: str, data_root: Path | None = None, tree_ref: str | None = None) -> dict:
+    config = get_dataset(dataset_id, data_root, tree_ref)
     encoded_id = quote(dataset_id, safe="")
     photo_folders = {}
     for folder in sorted(path for path in config["photos"].iterdir() if path.is_dir() and not path.name.startswith(".")):
@@ -128,7 +140,9 @@ def dataset_payload(dataset_id: str, data_root: Path | None = None) -> dict:
     return {
         "id": dataset_id,
         "title": config["title"],
-        "tree": {"filename": config["tree"].name, "url": f"/api/datasets/{encoded_id}/tree"},
+        "tree": {"id": config["tree_id"], "filename": config["tree"].name, "url": f"/api/datasets/{encoded_id}/tree?tree={quote(config['tree_id'], safe='')}"},
+        "trees": [{"id": tree_id, "filename": tree_path.name} for tree_id, tree_path in config["trees"].items()],
+        "defaultTreeId": config["default_tree_id"],
         "metadata": {"filename": config["metadata"].name, "url": f"/api/datasets/{encoded_id}/metadata"} if config["metadata"] else None,
         "photoFolders": photo_folders,
     }
@@ -568,7 +582,7 @@ class Handler(SimpleHTTPRequestHandler):
         finally:
             if temporary.exists(): temporary.unlink()
         self.send_response(HTTPStatus.NO_CONTENT); self.end_headers()
-    def api(self, path: str) -> bool:
+    def api(self, path: str, query: dict[str, list[str]]) -> bool:
         if path == "/api/capabilities":
             self.send_json({"editing": True, "language": ["en", "zh-Hant"]})
             return True
@@ -576,13 +590,18 @@ class Handler(SimpleHTTPRequestHandler):
             datasets, errors = discover_datasets()
             self.send_json({"datasets": datasets, "errors": errors})
             return True
+        match = re.fullmatch(r"/api/datasets/([^/]+)/trees", path)
+        if match:
+            config = get_dataset(unquote(match.group(1)))
+            self.send_json({"trees": [{"id": tree_id, "filename": tree_path.name} for tree_id, tree_path in config["trees"].items()], "defaultTreeId": config["default_tree_id"]})
+            return True
         match = re.fullmatch(r"/api/datasets/([^/]+)", path)
         if match:
-            self.send_json(dataset_payload(unquote(match.group(1))))
+            self.send_json(dataset_payload(unquote(match.group(1)), tree_ref=(query.get("tree") or [None])[0]))
             return True
         match = re.fullmatch(r"/api/datasets/([^/]+)/(tree|metadata)", path)
         if match:
-            config = get_dataset(unquote(match.group(1)))
+            config = get_dataset(unquote(match.group(1)), tree_ref=(query.get("tree") or [None])[0] if match.group(2) == "tree" else None)
             target = config[match.group(2)]
             if target is None:
                 raise DatasetError("Metadata is not configured")
@@ -599,12 +618,13 @@ class Handler(SimpleHTTPRequestHandler):
         return False
 
     def handle_request(self) -> None:
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         if not path.startswith("/api/"):
             super().do_GET() if self.command == "GET" else super().do_HEAD()
             return
         try:
-            if not self.api(path):
+            if not self.api(path, parse_qs(parsed.query)):
                 self.send_json({"error": "API endpoint not found"}, HTTPStatus.NOT_FOUND)
         except DatasetError as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
